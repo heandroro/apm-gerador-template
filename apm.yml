@@ -1,0 +1,14 @@
+name: apm-gerador-template
+version: 1.0.0
+description: APM package for scaffolding Java Hexagonal Architecture projects from a template repository.
+author: heandroro
+license: MIT
+type: skill
+includes: auto
+
+dependencies:
+  mcp:
+    - name: io.github.github/github-mcp-server
+      tools: ["create_repository", "create_or_update_file", "get_file_contents"]
+      env:
+        GITHUB_TOKEN: ${GITHUB_TOKEN}
