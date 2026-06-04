@@ -1,171 +1,259 @@
-# Arquivos a Adaptar — Mapa de Tokens por Arquivo
+# Files to Adapt — Token Substitution Map
 
-Este arquivo lista todos os arquivos do template que contêm tokens a substituir,
-com a localização exata de cada ocorrência.
-
-## Tokens de substituição
-
-| Token original | Substituto | Contexto |
-|---|---|---|
-| `com.mycompany.template` | `{NAMESPACE}` | groupId Maven, pacotes Java |
-| `java-hexagonal-template` | `{PROJECT_NAME}` | artifactId, nome de pasta, links |
-| `hexagonal_db` | `{PROJECT_NAME_SNAKE}` | nome do banco Postgres |
-| `hexagonal-template-group` | `{PROJECT_NAME}-group` | Kafka consumer group |
-| `Hexagonal Architecture multi-module Maven template` | `{PROJECT_DESCRIPTION}` | Descrição no README/pom |
+This document lists every file from `heandroro/java-hexagonal-template` that requires
+token substitution, with the exact tokens per file.
 
 ---
 
-## pom.xml (raiz)
+## Token Reference Table
 
-Tokens: `com.mycompany.template` (groupId), `java-hexagonal-template` (artifactId, name)
-
-Remover `<module>` para cada módulo não utilizado:
-- `<module>infra-api</module>` — se APP_TYPE != api
-- `<module>infra-kafka</module>` — se worker broker != kafka e HTTP_CLIENT != feign
-- `<module>infra-postgres</module>` — se DATABASE != postgres e != both
-- `<module>infra-dynamodb</module>` — se DATABASE != dynamodb e != both
-- `<module>infra-valkey</module>` — se CACHE != server
-- `<module>infra-client-api</module>` — se HTTP_CLIENT != feign
-
----
-
-## core/pom.xml
-
-Tokens: `com.mycompany.template` (groupId, parent groupId), `java-hexagonal-template` (parent artifactId)
+| Token (original) | Replaced by | Notes |
+| --- | --- | --- |
+| `com.mycompany.template` | `{NAMESPACE}` | Java package declaration, import statements |
+| `com.mycompany` | `{NAMESPACE_ROOT}` | Parent package when `NAMESPACE` has depth > 2 |
+| `java-hexagonal-template` | `{PROJECT_NAME}` | artifactId in pom.xml, repository name |
+| `JavaHexagonalTemplate` | `{PROJECT_CLASS_PREFIX}` | PascalCase class name prefix |
+| `hexagonal_db` | `{PROJECT_NAME_SNAKE}` | PostgreSQL database name |
+| `hexagonal-template-group` | `{PROJECT_NAME}-group` | Kafka consumer group ID |
+| `my-service` | `{PROJECT_NAME}` | Spring application name in application.yml |
 
 ---
 
-## core/src/main/java — Estrutura de pacotes
+## Root Files
 
-Renomear pasta:
+### `pom.xml`
+
+Tokens:
+
+- `java-hexagonal-template` → `{PROJECT_NAME}` (artifactId, line ~5)
+- `com.mycompany.template` → `{NAMESPACE}` (groupId, line ~4)
+- Each `<module>` entry for excluded modules → **remove entire `<module>` line**
+
+### `docker-compose.yml`
+
+Action: Keep only services required by selected modules:
+
+- `postgres` service: keep if `DATABASE = postgres` or `both`
+- `dynamodb-local` service: keep if `DATABASE = dynamodb` or `both`
+- `redis`/`valkey` service: keep if `CACHE = server`
+- `kafka` + `zookeeper` services: keep if `APP_TYPE = worker` and `WORKER_BROKER = kafka`
+- Remove all others
+
+### `README.md`
+
+Replace entire file with `./readme-template.md` rendered with project variables
+and dynamic capability/profile variables (selected modules, stack rows, runtime config,
+module tree, dependency graph, and next steps).
+
+### `AGENT.md`
+
+Tokens:
+
+- `java-hexagonal-template` → `{PROJECT_NAME}`
+- `com.mycompany.template` → `{NAMESPACE}`
+- Update "Project Overview" section with `{PROJECT_DESCRIPTION}`
+
+### `TEMPLATE-MANIFEST.json`
+
+Tokens:
+
+- `java-hexagonal-template` → `{PROJECT_NAME}`
+- `com.mycompany.template` → `{NAMESPACE}`
+- `hexagonal_db` → `{PROJECT_NAME_SNAKE}`
+- Remove entries for excluded modules from `modules` array
+
+---
+
+## Module: `core/`
+
+### `core/pom.xml`
+
+Tokens:
+
+- `java-hexagonal-template` → `{PROJECT_NAME}` (parent artifactId ref)
+- `com.mycompany.template` → `{NAMESPACE}` (groupId)
+
+### `core/src/main/java/com/mycompany/template/core/domain/User.java`
+
+File path rename: `com/mycompany/template` → namespace path (e.g. `com/example/payment`)
+
+Tokens:
+
+- `package com.mycompany.template.core.domain;` → `package {NAMESPACE}.core.domain;`
+- Class/record name: `User` — keep as-is (domain entity stays named User in template context)
+
+### `core/src/main/java/com/mycompany/template/core/ports/in/CreateUserUseCase.java`
+
+File path rename + package declaration.
+
+### `core/src/main/java/com/mycompany/template/core/ports/in/FindUserUseCase.java`
+
+File path rename + package declaration.
+
+### `core/src/main/java/com/mycompany/template/core/ports/out/UserRepositoryPort.java`
+
+File path rename + package declaration.
+
+### `core/src/main/java/com/mycompany/template/core/ports/out/UserCachePort.java`
+
+File path rename + package declaration. **Include only if `CACHE != none`.**
+
+### `core/src/main/java/com/mycompany/template/core/usecase/CreateUserUseCaseImpl.java`
+
+File path rename + package declaration + all import statements.
+
+Tokens in body:
+
+- `com.mycompany.template.core` → `{NAMESPACE}.core`
+
+### `core/src/main/java/com/mycompany/template/core/usecase/FindUserUseCaseImpl.java`
+
+Same as above.
+
+### Test files under `core/src/test/`
+
+Same package renaming rule applies to all test files.
+
+---
+
+## Module: `application/`
+
+### `application/pom.xml`
+
+Tokens:
+
+- `java-hexagonal-template` → `{PROJECT_NAME}`
+- `com.mycompany.template` → `{NAMESPACE}`
+- Remove `<dependency>` blocks for excluded modules
+
+### `application/src/main/java/com/mycompany/template/application/Application.java`
+
+File path rename + package declaration.
+
+Tokens:
+
+- `package com.mycompany.template.application;` → `package {NAMESPACE}.application;`
+
+### `application/src/main/resources/application.yml`
+
+Tokens:
+
+- `my-service` → `{PROJECT_NAME}` (spring.application.name)
+- `hexagonal_db` → `{PROJECT_NAME_SNAKE}` (datasource database name)
+- `hexagonal-template-group` → `{PROJECT_NAME}-group` (kafka consumer group)
+- Remove config blocks for excluded infrastructure (e.g. remove `spring.kafka` if no Kafka)
+
+---
+
+## Module: `infra-api/` (include if `APP_TYPE = api`)
+
+### `infra-api/pom.xml`
+
+Tokens: `java-hexagonal-template` → `{PROJECT_NAME}`, `com.mycompany.template` → `{NAMESPACE}`
+
+### All Java files under `infra-api/src/`
+
+File path rename + package declarations + imports.
+
+Class name prefix substitutions:
+
+- `UserController` → use as-is (template entity)
+- Import paths: `com.mycompany.template.infra.api` → `{NAMESPACE}.infra.api`
+- Import paths: `com.mycompany.template.core` → `{NAMESPACE}.core`
+
+---
+
+## Module: `infra-kafka/` (include if messaging enabled)
+
+### `infra-kafka/pom.xml`
+
+Tokens: standard pom tokens.
+
+### All Java files under `infra-kafka/src/`
+
+File path rename + package declarations + imports.
+
+- Import paths: `com.mycompany.template.infra.kafka` → `{NAMESPACE}.infra.kafka`
+- Import paths: `com.mycompany.template.core` → `{NAMESPACE}.core`
+
+### If `WORKER_BROKER = sqs` (adaptation)
+
+In `UserEventListener.java`:
+
+- Replace `@KafkaListener(topics = "...")` with `@SqsListener("${aws.sqs.queue-url}")`
+- Replace `spring-kafka` dependency with `spring-cloud-aws-starter-sqs` in pom.xml
+
+---
+
+## Module: `infra-postgres/` (include if `DATABASE = postgres` or `both`)
+
+### `infra-postgres/pom.xml`
+
+Tokens: standard pom tokens.
+
+### All Java files under `infra-postgres/src/`
+
+File path rename + package declarations + imports.
+
+- Import paths: `com.mycompany.template.infra.postgres` → `{NAMESPACE}.infra.postgres`
+- Import paths: `com.mycompany.template.core` → `{NAMESPACE}.core`
+
+---
+
+## Module: `infra-valkey/` (include if `CACHE = server`)
+
+### `infra-valkey/pom.xml`
+
+Tokens: standard pom tokens.
+
+### All Java files under `infra-valkey/src/`
+
+File path rename + package declarations + imports.
+
+- Import paths: `com.mycompany.template.infra.valkey` → `{NAMESPACE}.infra.valkey`
+- Import paths: `com.mycompany.template.core` → `{NAMESPACE}.core`
+
+---
+
+## Module: `infra-dynamodb/` (include if `DATABASE = dynamodb` or `both`)
+
+### `infra-dynamodb/pom.xml`
+
+Tokens: standard pom tokens.
+
+### All Java files under `infra-dynamodb/src/`
+
+File path rename + package declarations + imports.
+
+---
+
+## Module: `infra-client-api/` (include if `HTTP_CLIENT = feign`)
+
+### `infra-client-api/pom.xml`
+
+Tokens: standard pom tokens.
+
+### All Java files under `infra-client-api/src/`
+
+File path rename + package declarations + imports.
+
+---
+
+## File Path Renaming Rule
+
+All files under:
+
+```text
+src/main/java/com/mycompany/template/...
+src/test/java/com/mycompany/template/...
 ```
-src/main/java/com/mycompany/template/
-          ↓
-src/main/java/{NAMESPACE_PATH}/
-```
-Onde `{NAMESPACE_PATH}` = NAMESPACE com `.` trocado por `/`
-(ex: `com.minhaempresa.pagamentos` → `com/minhaempresa/pagamentos`)
 
-Atualizar declaração `package` em todos os arquivos `.java`:
-```java
-package com.mycompany.template.core.domain;
-    ↓
-package {NAMESPACE}.core.domain;
+Must be uploaded to the new repository under the path derived from `{NAMESPACE}`:
+
+```text
+com.example.payment-service
+  → src/main/java/com/example/paymentservice/...
 ```
 
----
-
-## infra-api/pom.xml
-
-Tokens: `com.mycompany.template` (groupId, parent groupId, dependency groupId), `java-hexagonal-template`
-
----
-
-## infra-api/src/main/java — Pacotes
-
-Mesma lógica de renomeação de pastas e `package` declarations.
-
----
-
-## infra-postgres/pom.xml
-
-Tokens: `com.mycompany.template`, `java-hexagonal-template`
-
----
-
-## infra-valkey/pom.xml
-
-Tokens: `com.mycompany.template`, `java-hexagonal-template`
-
----
-
-## infra-kafka/pom.xml
-
-Tokens: `com.mycompany.template`, `java-hexagonal-template`
-
----
-
-## infra-dynamodb/pom.xml
-
-Tokens: `com.mycompany.template`, `java-hexagonal-template`
-
----
-
-## infra-client-api/pom.xml
-
-Tokens: `com.mycompany.template`, `java-hexagonal-template`
-
----
-
-## application/pom.xml
-
-Tokens: `com.mycompany.template`, `java-hexagonal-template`
-
-Remover `<dependency>` para cada módulo não utilizado (mesma lógica do pom.xml raiz).
-
----
-
-## application/src/main/resources/application.yml
-
-Tokens e blocos a adaptar:
-
-```yaml
-# Nome da aplicação
-spring.application.name: java-hexagonal-template
-  ↓
-spring.application.name: {PROJECT_NAME}
-
-# Banco de dados PostgreSQL — REMOVER se DATABASE != postgres
-spring.datasource.url: jdbc:postgresql://localhost:5432/hexagonal_db
-                                                         ↑
-                                               substituir por {PROJECT_NAME_SNAKE}
-
-# Kafka consumer group — REMOVER se APP_TYPE != worker (kafka)
-spring.kafka.consumer.group-id: hexagonal-template-group
-  ↓
-spring.kafka.consumer.group-id: {PROJECT_NAME}-group
-```
-
-Blocos a remover conforme escolhas:
-- Todo bloco `spring.datasource.*` e `spring.jpa.*` → se DATABASE = none ou dynamodb
-- Todo bloco `spring.data.redis.*` → se CACHE != server
-- Todo bloco `spring.kafka.*` → se APP_TYPE = api e HTTP_CLIENT = feign apenas
-- Todo bloco `app.kafka.*` → se APP_TYPE != worker (kafka)
-- Todo bloco `app.cache.*` → se CACHE = none
-- Perfil `dynamodb` → se DATABASE != dynamodb e != both
-
----
-
-## docker-compose.yml
-
-Serviços a manter conforme escolhas:
-
-| Serviço | Manter quando |
-|---|---|
-| `postgres` | DATABASE = postgres ou both |
-| `dynamodb-local` | DATABASE = dynamodb ou both |
-| `valkey` | CACHE = server |
-| `kafka` + `zookeeper` | APP_TYPE = worker (kafka) ou sempre (para dev) |
-
----
-
-## README.md
-
-Usar template em `/references/readme-template.md`.
-Substituir todas as variáveis `{NAMESPACE}`, `{PROJECT_NAME}`, `{PROJECT_DESCRIPTION}`,
-e listar apenas os módulos efetivamente incluídos na seção de estrutura.
-
----
-
-## AGENT.md
-
-Atualizar o cabeçalho para contextualizar o projeto específico:
-- Substituir `java-hexagonal-template` pelo `{PROJECT_NAME}`
-- Atualizar a descrição na introdução
-- Manter todas as regras arquiteturais intactas (elas são universais)
-
----
-
-## .gitignore
-
-Copiar sem alterações.
+Convert `{NAMESPACE}` dots to `/` to build the directory path.
+Strip hyphens from the last segment if present (e.g. `payment-service` → `paymentservice`).

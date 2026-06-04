@@ -10,6 +10,19 @@ Este skill conduz uma entrevista estruturada com o usuário, coleta as decisões
 usa o GitHub MCP para ler os dados do template e gera os arquivos adaptados localmente
 no workspace por padrão.
 
+Referência oficial do APM: https://microsoft.github.io/apm/
+
+---
+
+## Diretriz de Eficiência de Contexto
+
+Para otimizar custo de tokens e processamento da LLM:
+
+1. Mantenha respostas curtas e orientadas a decisão; evite repetir blocos longos de instrução.
+2. Carregue detalhes somente sob demanda a partir de `./references/*`.
+3. No sumário de confirmação, apresente apenas variáveis finais, módulos selecionados e ações pendentes.
+4. Evite reimprimir listas completas de tokens/arquivos quando não houver mudança.
+
 ---
 
 ## Pré-requisito: leitura do template via GitHub MCP
@@ -20,7 +33,7 @@ Antes de iniciar, verifique se as ferramentas do GitHub MCP estão disponíveis 
 Se não estiverem:
 1. Informe o usuário que a leitura remota do template depende do GitHub MCP.
 2. Indique o link: https://github.com/modelcontextprotocol/servers/tree/main/src/github
-3. Continue com a geração local usando os arquivos de referência do pacote.
+3. Interrompa o fluxo e aguarde o usuário conectar/configurar o GitHub MCP.
 
 ---
 
@@ -39,7 +52,7 @@ Exemplo: com.minhaempresa.pagamentos
 
 ### Pergunta 2 — Nome do Projeto
 ```
-Qual o nome do projeto? (será usado como artifactId Maven e nome do repositório GitHub)
+Qual o nome do projeto? (será usado como artifactId Maven)
 Exemplo: payment-service
 ```
 - Valide: lowercase, hífens permitidos, sem espaços.
@@ -54,87 +67,42 @@ Exemplo: Serviço responsável por processar pagamentos via PIX e cartão.
 ```
 - Armazene como: `PROJECT_DESCRIPTION`
 
-### Pergunta 4 — Tipo de Aplicação
-```
-Será uma aplicação API ou Worker?
-1. API — expõe endpoints síncronos
-2. Worker — processa mensagens assíncronas
-```
-- Armazene como: `APP_TYPE` = `api` | `worker`
+### Perguntas 4+ — Dinâmicas por capacidade do template
 
-### Pergunta 4a — Sub-tipo API (somente se APP_TYPE = api)
-```
-Qual o protocolo da API?
-1. REST (Spring Web MVC) — recomendado
-2. gRPC
-3. SOAP
-```
-- Armazene como: `API_PROTOCOL` = `rest` | `grpc` | `soap`
-- Nota: o template tem suporte nativo a REST. gRPC e SOAP exigirão dependências extras (documente isso).
+Da Pergunta 4 em diante, gere perguntas dinamicamente com base nas capacidades do
+template (não hardcode opções nesta etapa).
 
-### Pergunta 4b — Sub-tipo Worker (somente se APP_TYPE = worker)
-```
-Qual o broker de mensageria?
-1. Kafka (já incluído no template)
-2. SQS (AWS)
-```
-- Armazene como: `WORKER_BROKER` = `kafka` | `sqs`
+Fluxo obrigatório:
+1. Ler capacidades do template via GitHub MCP (`get_file_contents`) a partir dos
+   artefatos de manifesto/referência disponíveis.
+2. Montar perguntas somente para capacidades existentes no template atual.
+3. Exibir apenas opções válidas para cada capacidade.
+4. Pular perguntas de capacidades não suportadas.
+5. Se a leitura remota falhar, interromper o fluxo e pedir ao usuário para
+   habilitar o GitHub MCP.
 
-### Pergunta 5 — Banco de Dados
-```
-A aplicação terá banco de dados? Se sim, qual?
-1. Não terá banco de dados
-2. PostgreSQL (já incluído no template)
-3. DynamoDB (já incluído no template)
-4. Ambos (Postgres + DynamoDB)
-```
-- Armazene como: `DATABASE` = `none` | `postgres` | `dynamodb` | `both`
-
-### Pergunta 6 — Cache
-```
-Terá camada de cache?
-1. Não
-2. Cache local (in-process, ex: Caffeine)
-3. Cache via servidor (Valkey/Redis — já incluído no template)
-```
-- Armazene como: `CACHE` = `none` | `local` | `server`
-
-### Pergunta 7 — Integrações HTTP
-```
-A aplicação terá integração com outras APIs (HTTP clients de saída)?
-1. Não
-2. Sim (OpenFeign — já incluído no template)
-```
-- Armazene como: `HTTP_CLIENT` = `none` | `feign`
+Mapeamento mínimo de saída (manter estas variáveis para as fases seguintes):
+- `APP_TYPE` (quando o template suportar variação de tipo de aplicação)
+- `API_PROTOCOL` (quando `APP_TYPE = api` e houver protocolos alternativos)
+- `WORKER_BROKER` (quando `APP_TYPE = worker` e houver brokers alternativos)
+- `DATABASE` (quando o template suportar opções de persistência)
+- `CACHE` (quando o template suportar opções de cache)
+- `HTTP_CLIENT` (quando o template suportar integrações HTTP de saída)
 
 ---
 
 ## Fase 2 — Sumário e Confirmação
 
-Antes de gerar qualquer arquivo, apresente um sumário ao usuário:
+Antes de gerar qualquer arquivo, apresente um sumário compacto:
 
-```
-📋 Resumo do Projeto
-─────────────────────────────────────────
-📦 Namespace:     {NAMESPACE}
-🏷️  Nome:          {PROJECT_NAME}
-📝 Descrição:     {PROJECT_DESCRIPTION}
-🔧 Tipo:          {APP_TYPE} ({API_PROTOCOL ou WORKER_BROKER})
-🗄️  Banco de Dados: {DATABASE}
-💾 Cache:         {CACHE}
-🔌 HTTP Client:   {HTTP_CLIENT}
+- `NAMESPACE`, `PROJECT_NAME`, `PROJECT_DESCRIPTION`
+- Tipo e capacidades selecionadas (`APP_TYPE`, protocolo/broker, `DATABASE`, `CACHE`, `HTTP_CLIENT`)
+- Módulos finais que serão gerados (interseção entre escolhas e capacidades do template)
+- Ação pendente: confirmação explícita do usuário para gerar localmente
 
-📁 Módulos que serão incluídos:
-{lista baseada nas escolhas — ver Fase 3}
+Pergunta final obrigatória:
 
-🔄 Tokens que serão substituídos:
-  com.mycompany.template → {NAMESPACE}
-  java-hexagonal-template → {PROJECT_NAME}
-  hexagonal_db → {PROJECT_NAME_SNAKE}
-  hexagonal-template-group → {PROJECT_NAME}-group
-
-Confirmar a geração local do projeto? (sim/não)
-```
+`Confirmar a geração local do projeto? (sim/não)`
 
 Aguarde confirmação antes de prosseguir.
 
@@ -142,25 +110,30 @@ Aguarde confirmação antes de prosseguir.
 
 ## Fase 3 — Decisão de Módulos
 
-Com base nas respostas, determine quais módulos incluir:
+Decida os módulos com base no que o template realmente oferece.
 
-| Condição | Módulos incluídos |
-|---|---|
-| Sempre | `core`, `application` |
-| `APP_TYPE = api` | + `infra-api` |
-| `APP_TYPE = worker` e broker = kafka | + `infra-kafka` |
-| `APP_TYPE = worker` e broker = sqs | + `infra-kafka` (adaptar para SQS — ver nota abaixo) |
-| `DATABASE = postgres` ou `both` | + `infra-postgres` |
-| `DATABASE = dynamodb` ou `both` | + `infra-dynamodb` |
-| `CACHE = server` | + `infra-valkey` |
-| `HTTP_CLIENT = feign` | + `infra-client-api` |
+Fluxo obrigatório:
+1. Leia via GitHub MCP (`get_file_contents`) os artefatos de template/manifesto que
+   indicam módulos e capacidades suportadas.
+2. Monte a lista de módulos elegíveis do template atual.
+3. Cruze as respostas do usuário com os módulos elegíveis e selecione apenas a interseção.
+4. Trate capacidades pedidas pelo usuário que não existirem no template como divergência:
+   - informe claramente a limitação,
+   - proponha a alternativa mais próxima suportada,
+   - aguarde confirmação antes de seguir.
+5. Se a leitura remota falhar, interrompa o fluxo e peça ao usuário para
+   habilitar o GitHub MCP.
 
-**Nota SQS:** O template não tem módulo nativo para SQS. Use `infra-kafka` como base,
-substitua as dependências do Spring Kafka pelo `spring-cloud-aws-starter-sqs`
-e adapte o Listener para `@SqsListener`.
+Regras mínimas de seleção:
+- Sempre incluir `core` e `application` quando estiverem disponíveis no template.
+- Incluir módulos opcionais apenas se:
+  - a capacidade foi solicitada pelo usuário, e
+  - o módulo/capacidade existe no template atual.
+- Não inventar módulo inexistente no template.
 
-**Nota Cache Local:** Se `CACHE = local`, adicionar dependência `caffeine` no módulo
-que precisar de cache (geralmente `infra-api` ou `application`). Não incluir `infra-valkey`.
+Adaptações condicionais (quando suportadas no template):
+- SQS: usar o módulo de mensageria base indicado pelo template e aplicar adaptação SQS.
+- Cache local: aplicar configuração local sem incluir módulo de cache servidor.
 
 ---
 
@@ -178,7 +151,7 @@ hexagonal-template-group →  {PROJECT_NAME}-group
 
 ### Arquivos críticos a adaptar
 
-Consulte `/references/files-to-adapt.md` para a lista completa com localização exata
+Consulte `./references/files-to-adapt.md` para a lista completa com localização exata
 de cada token por arquivo.
 
 ### Remoção de módulos não utilizados
@@ -201,7 +174,7 @@ Execute na seguinte ordem:
 2. **Para cada módulo incluído**, materializar os arquivos adaptados localmente.
    Priorize a ordem: `pom.xml` raiz → `core/` → módulos infra → `application/`.
 3. **Criar arquivos adicionais:**
-   - `README.md` adaptado (ver template em `/references/readme-template.md`)
+   - `README.md` adaptado (ver template em `./references/readme-template.md`)
    - `AGENT.md` atualizado com o contexto do novo projeto
    - `.gitignore` (copiar do original)
    - `docker-compose.yml` filtrado pelos serviços utilizados
@@ -214,19 +187,10 @@ Execute na seguinte ordem:
 
 ---
 
-## Modo Offline (sem GitHub MCP)
-
-Se o GitHub MCP não estiver disponível:
-1. Use os arquivos de referência locais do pacote para continuar a geração no workspace.
-2. Se algum dado do template remoto não puder ser lido, informe a limitação ao usuário.
-3. Não faça commit nem push automáticos; a saída continua local.
-
----
-
 ## Referências
 
-- `/references/files-to-adapt.md` — Lista exata de arquivos e tokens por arquivo
-- `/references/readme-template.md` — Template de README.md para o novo projeto
-- `/references/module-dependencies.md` — Dependências Maven por módulo para copiar
+- `./references/files-to-adapt.md` — Lista exata de arquivos e tokens por arquivo
+- `./references/readme-template.md` — Template de README.md para o novo projeto
+- `./references/module-dependencies.md` — Dependências Maven por módulo para copiar
 
 Leia esses arquivos conforme necessário durante a geração.

@@ -3,6 +3,8 @@
 APM package for scaffolding Java Hexagonal Architecture projects from the
 [java-hexagonal-template](https://github.com/heandroro/java-hexagonal-template).
 
+Official APM references: [microsoft.github.io/apm](https://microsoft.github.io/apm/) (general) and [microsoft.github.io/apm/producer](https://microsoft.github.io/apm/producer/) (producer).
+
 ## Install
 
 ```bash
@@ -42,12 +44,12 @@ in your workspace using the template data read through GitHub MCP.
 
 No commit or push happens automatically in this flow.
 
-### Option 2 — Prompt (on-demand)
+### Option 2 — Prompt (bundled inside the skill package)
 
-Use `/new-java-hexagonal-project` to fill in all project variables at once:
+The prompt template is now bundled as a skill asset at:
 
 ```text
-/new-java-hexagonal-project
+.apm/skills/gerador-scaffold-java/prompts/new-java-hexagonal-project.prompt.md
 ```
 
 ## What gets generated
