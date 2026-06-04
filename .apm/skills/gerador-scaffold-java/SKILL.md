@@ -1,26 +1,26 @@
 ---
 name: gerador-scaffold-java
-description: "Use when the user wants to create a new Java project from the hexagonal template (https://github.com/heandroro/java-hexagonal-template). Triggers include: \"criar projeto\", \"novo projeto Java\", \"gerar projeto\", \"scaffolding\", \"criar repositório hexagonal\", \"novo serviço Java\", \"criar microserviço\", or any mention of starting a new Java service based on the hexagonal architecture template. Conducts a structured interview, then creates the GitHub repository and adapts all files automatically via the GitHub MCP. Apply even when the user says only \"quero criar um projeto\" or \"me ajuda a criar um serviço novo\"."
+description: "Use when the user wants to create a new Java project from the hexagonal template (https://github.com/heandroro/java-hexagonal-template). Triggers include: \"criar projeto\", \"novo projeto Java\", \"gerar projeto\", \"scaffolding\", \"criar repositório hexagonal\", \"novo serviço Java\", \"criar microserviço\", or any mention of starting a new Java service based on the hexagonal architecture template. Conducts a structured interview, reads template data via the GitHub MCP, and generates the adapted files locally in the workspace by default. Apply even when the user says only \"quero criar um projeto\" or \"me ajuda a criar um serviço novo\"."
 argument-hint: "Opcionalmente informe o nome do projeto ou namespace (ex: payment-service, com.minhaempresa.pagamentos)"
 ---
 
 # Agent Package Manager — Java Hexagonal Template
 
-Este skill conduz uma entrevista estruturada com o usuário, coleta as decisões de projeto
-e gera um novo repositório GitHub com os arquivos do template `java-hexagonal-template`
-totalmente adaptados para o projeto.
+Este skill conduz uma entrevista estruturada com o usuário, coleta as decisões de projeto,
+usa o GitHub MCP para ler os dados do template e gera os arquivos adaptados localmente
+no workspace por padrão.
 
 ---
 
-## Pré-requisito: GitHub MCP
+## Pré-requisito: leitura do template via GitHub MCP
 
 Antes de iniciar, verifique se as ferramentas do GitHub MCP estão disponíveis no contexto
-(ex: `create_repository`, `create_or_update_file`, `get_file_contents`).
+(ex: `get_file_contents`).
 
 Se não estiverem:
-1. Informe o usuário que o GitHub MCP precisa estar conectado.
+1. Informe o usuário que a leitura remota do template depende do GitHub MCP.
 2. Indique o link: https://github.com/modelcontextprotocol/servers/tree/main/src/github
-3. Ofereça gerar os arquivos localmente enquanto isso (modo offline).
+3. Continue com a geração local usando os arquivos de referência do pacote.
 
 ---
 
@@ -133,7 +133,7 @@ Antes de gerar qualquer arquivo, apresente um sumário ao usuário:
   hexagonal_db → {PROJECT_NAME_SNAKE}
   hexagonal-template-group → {PROJECT_NAME}-group
 
-Confirmar e criar o repositório? (sim/não)
+Confirmar a geração local do projeto? (sim/não)
 ```
 
 Aguarde confirmação antes de prosseguir.
@@ -193,40 +193,33 @@ E remova do `application/pom.xml` as dependências dos módulos excluídos.
 
 ---
 
-## Fase 5 — Criação do Repositório via GitHub MCP
+## Fase 5 — Geração Local dos Arquivos
 
 Execute na seguinte ordem:
 
-1. **Criar repositório:**
-   ```
-   create_repository(
-     name = {PROJECT_NAME},
-     description = {PROJECT_DESCRIPTION},
-     private = true,  ← perguntar ao usuário se deve ser privado
-     auto_init = false
-   )
-   ```
-
-2. **Para cada módulo incluído**, usar `create_or_update_file` para subir os arquivos
-   adaptados. Priorize a ordem: `pom.xml` raiz → `core/` → módulos infra → `application/`.
-
+1. **Criar a estrutura local do projeto** no workspace atual, preservando a organização do template.
+2. **Para cada módulo incluído**, materializar os arquivos adaptados localmente.
+   Priorize a ordem: `pom.xml` raiz → `core/` → módulos infra → `application/`.
 3. **Criar arquivos adicionais:**
    - `README.md` adaptado (ver template em `/references/readme-template.md`)
    - `AGENT.md` atualizado com o contexto do novo projeto
    - `.gitignore` (copiar do original)
    - `docker-compose.yml` filtrado pelos serviços utilizados
-
-4. **Confirmar ao usuário** com o link do novo repositório.
+4. **Executar a validação final do projeto**, nesta ordem:
+   - `mvn clean compile`
+   - `mvn test`
+   - `mvn package`
+5. **Confirmar ao usuário** que a geração foi concluída localmente e indicar os caminhos principais dos arquivos gerados.
+6. **Se tudo tiver dado certo**, sugerir ao usuário criar um commit e fazer push para o repositório remoto, pedindo confirmação explícita antes de qualquer ação.
 
 ---
 
 ## Modo Offline (sem GitHub MCP)
 
 Se o GitHub MCP não estiver disponível:
-1. Gere todos os arquivos adaptados como blocos de código no chat.
-2. Organize por módulo, indicando o caminho exato de cada arquivo.
-3. Forneça um script shell `setup.sh` que cria a estrutura de pastas e
-   inicializa o repositório Git localmente.
+1. Use os arquivos de referência locais do pacote para continuar a geração no workspace.
+2. Se algum dado do template remoto não puder ser lido, informe a limitação ao usuário.
+3. Não faça commit nem push automáticos; a saída continua local.
 
 ---
 

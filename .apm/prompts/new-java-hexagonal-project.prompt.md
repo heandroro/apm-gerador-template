@@ -81,4 +81,6 @@ Com base nas respostas acima:
 2. **Aguarde confirmação** do usuário antes de criar qualquer arquivo.
 3. **Execute o skill `gerador-scaffold-java`** passando todas as variáveis coletadas.
 
-O skill conduzirá toda a geração, substituição de tokens e criação do repositório via GitHub MCP.
+O skill conduzirá a leitura do template via GitHub MCP, mas a geração final deve ocorrer
+localmente no workspace. Não faça commit nem push automáticos neste fluxo; se tudo
+der certo, o skill deve apenas sugerir commit e push ao usuário, aguardando confirmação.
