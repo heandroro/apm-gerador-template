@@ -3,6 +3,8 @@
 APM package for scaffolding Java Hexagonal Architecture projects from the
 [java-hexagonal-template](https://github.com/heandroro/java-hexagonal-template).
 
+Official APM references: [microsoft.github.io/apm](https://microsoft.github.io/apm/) (general) and [microsoft.github.io/apm/producer](https://microsoft.github.io/apm/producer/) (producer).
+
 ## Install
 
 ```bash
@@ -11,7 +13,7 @@ apm install heandroro/apm-gerador-template
 
 ## Requirements
 
-The GitHub MCP server must be connected with a valid `GITHUB_TOKEN`:
+The GitHub MCP server must be connected with a valid `GITHUB_TOKEN` to read template data:
 
 ```json
 {
@@ -37,21 +39,23 @@ when you say things like:
 - _"gerar scaffold para microserviço"_
 - _"criar repositório com arquitetura hexagonal"_
 
-The skill will interview you, present a summary, and then create the GitHub repository
-with all files adapted for your project.
+The skill will interview you, present a summary, and then generate all files locally
+in your workspace using the template data read through GitHub MCP.
 
-### Option 2 — Prompt (on-demand)
+No commit or push happens automatically in this flow.
 
-Use `/new-java-hexagonal-project` to fill in all project variables at once:
+### Option 2 — Prompt (bundled inside the skill package)
 
-```
-/new-java-hexagonal-project
+The prompt template is now bundled as a skill asset at:
+
+```text
+.apm/skills/gerador-scaffold-java/prompts/new-java-hexagonal-project.prompt.md
 ```
 
 ## What gets generated
 
 | Module | Included when |
-|---|---|
+| --- | --- |
 | `core` | Always |
 | `application` | Always |
 | `infra-api` | `app_type = api` |
@@ -61,10 +65,10 @@ Use `/new-java-hexagonal-project` to fill in all project variables at once:
 | `infra-valkey` | `cache = server` |
 | `infra-client-api` | `http_client = feign` |
 
-All files are adapted with token substitution:
+All files are adapted with token substitution and written locally:
 
 | Template token | Replaced by |
-|---|---|
+| --- | --- |
 | `com.mycompany.template` | Your namespace (groupId) |
 | `java-hexagonal-template` | Your project name (artifactId) |
 | `JavaHexagonalTemplate` | PascalCase class prefix |
