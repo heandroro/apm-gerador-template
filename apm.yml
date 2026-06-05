@@ -18,5 +18,3 @@ dependencies:
       env:
         GITHUB_TOKEN: ${GITHUB_TOKEN}  # Must be set in settings.json or environment
       required: true
-  apm:
-    - heandroro/apm-gerador-template
