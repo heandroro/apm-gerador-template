@@ -52,6 +52,17 @@ Para otimizar custo de tokens e processamento da LLM:
 Antes de iniciar, verifique se as ferramentas do GitHub MCP estão disponíveis no contexto
 (ex: `get_file_contents`).
 
+
+### Regra de segurança obrigatória (GitHub MCP)
+
+Este fluxo é **somente leitura remota**.
+
+- Permitido: ler arquivos do template (`get_file_contents`, busca textual/leitura equivalente).
+- Proibido: qualquer escrita remota no repositório do template (`create`, `update`, `delete`, `push`, PR, branch, commit remoto).
+- Se alguma ferramenta de escrita estiver disponível no contexto, **não usar** durante este skill.
+- A geração deve acontecer apenas no workspace local do usuário.
+- Se faltar informação do template, buscar alternativas de leitura (ex.: listagem local temporária) sem alterar o remoto.
+
 Se não estiverem:
 1. Informe o usuário que a leitura remota do template depende do GitHub MCP.
 2. Indique o link: https://github.com/modelcontextprotocol/servers/tree/main/src/github
