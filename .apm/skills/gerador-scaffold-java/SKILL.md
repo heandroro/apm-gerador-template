@@ -47,26 +47,74 @@ Para otimizar custo de tokens e processamento da LLM:
 
 ---
 
-## Pré-requisito: leitura do template via GitHub MCP
+## Pré-requisito: GitHub MCP com GITHUB_TOKEN
 
-Antes de iniciar, verifique se as ferramentas do GitHub MCP estão disponíveis no contexto
-(ex: `get_file_contents`).
+**Este skill REQUER GitHub MCP configurado com um `GITHUB_TOKEN` válido.**
 
+### Verificação automática em tempo de execução
+
+**Antes de iniciar**, execute este procedimento de detecção:
+
+1. **Tente chamar `get_file_contents`** como teste:
+   ```
+   owner: heandroro
+   repo: java-hexagonal-template
+   path: TEMPLATE-MANIFEST.json
+   ```
+
+   **Resultado esperado:** sucesso → MCP está pronto, prossiga para Fase 1.
+
+2. **Se a chamada falhar**, diagnostique o motivo:
+
+   **Caso A: Erro de autenticação / token inválido**
+   - **Mensagem ao usuário:**
+     ```
+     ❌ GitHub MCP retornou erro de autenticação.
+     
+     Solução:
+     1. Verifique se GITHUB_TOKEN está configurado em settings.json
+     2. Confirme que o token tem acesso ao repositório heandroro/java-hexagonal-template
+     3. Tokens podem expirar — gere um novo em: https://github.com/settings/tokens
+     
+     Após atualizar, tente novamente.
+     ```
+
+   **Caso B: MCP não está ativo / ferramentas não disponíveis**
+   - **Mensagem ao usuário:**
+     ```
+     ❌ GitHub MCP não está ativo ou acessível.
+     
+     Solução:
+     1. Confirme que GitHub MCP está configurado em settings.json com GITHUB_TOKEN
+     2. Restart Claude Code após configurar
+     3. Consulte: https://github.com/modelcontextprotocol/servers/tree/main/src/github
+     
+     Após configurar e reiniciar, tente novamente.
+     ```
+
+   **Caso C: Outro erro (network, não consegue resolver hostname, etc)**
+   - **Mensagem ao usuário:**
+     ```
+     ❌ Não consegui conectar ao GitHub para ler o template.
+     
+     Erro: [erro específico]
+     
+     Verificações:
+     1. Conexão com internet está ativa?
+     2. GitHub está acessível?
+     3. Firewall/proxy está bloqueando?
+     
+     Tente novamente em alguns instantes.
+     ```
 
 ### Regra de segurança obrigatória (GitHub MCP)
 
 Este fluxo é **somente leitura remota**.
 
-- Permitido: ler arquivos do template (`get_file_contents`, busca textual/leitura equivalente).
-- Proibido: qualquer escrita remota no repositório do template (`create`, `update`, `delete`, `push`, PR, branch, commit remoto).
-- Se alguma ferramenta de escrita estiver disponível no contexto, **não usar** durante este skill.
-- A geração deve acontecer apenas no workspace local do usuário.
-- Se faltar informação do template, buscar alternativas de leitura (ex.: listagem local temporária) sem alterar o remoto.
-
-Se não estiverem:
-1. Informe o usuário que a leitura remota do template depende do GitHub MCP.
-2. Indique o link: https://github.com/modelcontextprotocol/servers/tree/main/src/github
-3. Interrompa o fluxo e aguarde o usuário conectar/configurar o GitHub MCP.
+- ✅ Permitido: ler arquivos do template via `get_file_contents`.
+- ❌ Proibido: qualquer escrita no repositório do template (`create`, `update`, `delete`, `push`, commits, PRs).
+- ❌ Se ferramentas de escrita estiverem disponíveis, NÃO usar durante este skill.
+- ✅ Geração acontece apenas no workspace local do usuário.
 
 ---
 
