@@ -5,10 +5,10 @@ description: APM package for scaffolding Java Hexagonal Architecture projects fr
   MCP for dynamic module selection and token substitution.
 author: heandroro
 license: MIT
-type: skill
+type: package
 includes: auto
 
-# Mandatory dependencies for this skill to function
+# Package-level dependencies (GitHub MCP — required by all skills)
 dependencies:
   mcp:
     # GitHub MCP server — REQUIRED to read template data
@@ -18,5 +18,8 @@ dependencies:
       env:
         GITHUB_TOKEN: ${GITHUB_TOKEN}  # Must be set in settings.json or environment
       required: true
-  apm:
-    - heandroro/apm-gerador-template
+
+# Explicit skill references
+skills:
+  - name: gerador-scaffold-java
+    path: .apm/skills/gerador-scaffold-java

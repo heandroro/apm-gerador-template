@@ -1,0 +1,25 @@
+name: gerador-scaffold-java
+type: skill
+version: 1.0.0
+description: Scaffold Java Hexagonal Architecture projects from template with dynamic module selection and token substitution
+
+# Skill-specific triggers (when user says these, skill activates)
+triggers:
+  - criar projeto Java
+  - novo projeto hexagonal
+  - gerar scaffold para microserviço
+  - criar repositório com arquitetura hexagonal
+  - novo serviço Java
+  - criar microserviço
+  - gerar projeto
+
+# Optional argument hint for user
+argument-hint: "Opcionalmente informe o nome do projeto ou namespace (ex: payment-service, com.minhaempresa.pagamentos)"
+
+# Skill-specific dependencies
+dependencies:
+  mcp:
+    - name: io.github.github/github-mcp-server
+      tools:
+        - get_file_contents
+      required: true
