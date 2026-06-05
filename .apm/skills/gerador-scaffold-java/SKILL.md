@@ -132,7 +132,7 @@ Antes de gerar qualquer arquivo, apresente um sumário compacto:
 
 - `NAMESPACE`, `PROJECT_NAME`, `PROJECT_DESCRIPTION`
 - Tipo e capacidades selecionadas (`APP_TYPE`, protocolo/broker, `DATABASE`, `CACHE`, `HTTP_CLIENT`)
-- Módulos finais que serão gerados (interseção entre escolhas e capacidades do template)
+- Módulos que serão gerados (apenas os incluídos — não listar módulos excluídos)
 - Ação pendente: confirmação explícita do usuário para gerar localmente
 
 Pergunta final obrigatória:
