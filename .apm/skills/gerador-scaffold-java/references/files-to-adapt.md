@@ -13,10 +13,9 @@ A descoberta dos arquivos a adaptar é feita em tempo de execução a partir do
 | `com.mycompany.template` | `{NAMESPACE}` | Declaração de pacote, imports Java |
 | `com.mycompany` | `{NAMESPACE_ROOT}` | Pacote pai quando NAMESPACE tem profundidade > 2 |
 | `java-hexagonal-template` | `{PROJECT_NAME}` | artifactId em pom.xml, nome do repositório |
-| `JavaHexagonalTemplate` | `{PROJECT_CLASS_PREFIX}` | Prefixo PascalCase em nomes de classes |
 | `hexagonal_db` | `{PROJECT_NAME_SNAKE}` | Nome do banco PostgreSQL |
 | `hexagonal-template-group` | `{PROJECT_NAME}-group` | Consumer group ID do Kafka |
-| `my-service` | `{PROJECT_NAME}` | spring.application.name em application.yml |
+| `java-hexagonal-template` | `{PROJECT_NAME}` | spring.application.name em application.yml (mesmo token do artifactId) |
 
 ---
 
@@ -28,7 +27,6 @@ A descoberta dos arquivos a adaptar é feita em tempo de execução a partir do
   - declaração `package`
   - todos os `import`
   - literais de string que referenciem o pacote
-- Substituir `JavaHexagonalTemplate` por `{PROJECT_CLASS_PREFIX}` em nomes de classes.
 - Renomear o caminho do arquivo:
   `src/main/java/com/mycompany/template/` → `src/main/java/{NAMESPACE_PATH}/`
   onde `{NAMESPACE_PATH}` = `{NAMESPACE}` com `.` substituído por `/`.
@@ -42,7 +40,7 @@ A descoberta dos arquivos a adaptar é feita em tempo de execução a partir do
 
 ### `application/src/main/resources/application.yml`
 
-- Substituir `my-service` por `{PROJECT_NAME}` (`spring.application.name`).
+- Substituir `java-hexagonal-template` por `{PROJECT_NAME}` (`spring.application.name` — mesmo token do artifactId, já coberto globalmente).
 - Substituir `hexagonal_db` por `{PROJECT_NAME_SNAKE}` (nome do datasource/banco).
 - Substituir `hexagonal-template-group` por `{PROJECT_NAME}-group` (kafka consumer group).
 - Remover blocos de configuração dos serviços de infra excluídos

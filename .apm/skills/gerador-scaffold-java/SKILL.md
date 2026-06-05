@@ -86,7 +86,6 @@ Exemplo: payment-service
 - Valide: lowercase, hífens permitidos, sem espaços.
 - Armazene como: `PROJECT_NAME`
 - Derive: `PROJECT_NAME_SNAKE` = PROJECT_NAME com hífens → underscores (para DB name).
-- Derive: `PROJECT_CLASS_PREFIX` = PascalCase sem hífens (ex: `PaymentService`) — usado em nomes de classes.
 
 ### Pergunta 3 — Descrição
 ```
@@ -179,11 +178,9 @@ Monte o mapa de tokens com os valores coletados na Fase 1:
 ```
 com.mycompany.template   →  {NAMESPACE}
 com.mycompany            →  {NAMESPACE_ROOT}
-java-hexagonal-template  →  {PROJECT_NAME}
-JavaHexagonalTemplate    →  {PROJECT_CLASS_PREFIX}
+java-hexagonal-template  →  {PROJECT_NAME}   (artifactId, spring.application.name e referências no código)
 hexagonal_db             →  {PROJECT_NAME_SNAKE}
 hexagonal-template-group →  {PROJECT_NAME}-group
-my-service               →  {PROJECT_NAME}
 ```
 
 Consulte `./references/files-to-adapt.md` para as regras de substituição por tipo de arquivo.
