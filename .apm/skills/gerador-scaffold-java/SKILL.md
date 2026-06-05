@@ -14,14 +14,36 @@ Referência oficial do APM: https://microsoft.github.io/apm/
 
 ---
 
+## Template de Referência
+
+```
+owner:  heandroro
+repo:   java-hexagonal-template
+branch: main
+```
+
+Use sempre estes valores nas chamadas `get_file_contents`. Nunca infira owner/repo de outras fontes.
+
+Ponto de entrada obrigatório:
+```
+path: TEMPLATE-MANIFEST.json
+```
+
+Este arquivo lista todos os módulos disponíveis e as capacidades suportadas pelo template.
+Leia-o **uma única vez** na Fase 1 e reutilize seu conteúdo em todas as fases seguintes.
+Não faça chamadas MCP adicionais sem necessidade explícita.
+
+---
+
 ## Diretriz de Eficiência de Contexto
 
 Para otimizar custo de tokens e processamento da LLM:
 
-1. Mantenha respostas curtas e orientadas a decisão; evite repetir blocos longos de instrução.
-2. Carregue detalhes somente sob demanda a partir de `./references/*`.
-3. No sumário de confirmação, apresente apenas variáveis finais, módulos selecionados e ações pendentes.
-4. Evite reimprimir listas completas de tokens/arquivos quando não houver mudança.
+1. Leia `TEMPLATE-MANIFEST.json` apenas uma vez (Fase 1) e mantenha em contexto.
+2. Mantenha respostas curtas e orientadas a decisão; evite repetir blocos longos de instrução.
+3. Carregue detalhes de `./references/*` somente quando a fase exigir.
+4. No sumário de confirmação, apresente apenas variáveis finais, módulos selecionados e ações pendentes.
+5. Evite reimprimir listas completas de tokens/arquivos quando não houver mudança.
 
 ---
 
@@ -39,6 +61,9 @@ Se não estiverem:
 
 ## Fase 1 — Entrevista de Projeto
 
+**Antes da primeira pergunta**, leia `TEMPLATE-MANIFEST.json` via `get_file_contents`
+(owner/repo/branch definidos acima). Armazene o resultado em contexto.
+
 Faça as perguntas abaixo **uma de cada vez**, aguardando a resposta antes de prosseguir.
 Use linguagem amigável e exemplos concretos para guiar o usuário.
 
@@ -49,6 +74,9 @@ Exemplo: com.minhaempresa.pagamentos
 ```
 - Valide que seja um pacote Java válido (lowercase, sem hífens, sem espaços).
 - Armazene como: `NAMESPACE`
+- Derive: `NAMESPACE_ROOT` = segmentos iniciais do namespace excluindo o último
+  (ex: `com.minhaempresa.pagamentos` → `NAMESPACE_ROOT = com.minhaempresa`).
+  Se o namespace tiver apenas 2 segmentos, `NAMESPACE_ROOT = NAMESPACE`.
 
 ### Pergunta 2 — Nome do Projeto
 ```
@@ -69,17 +97,14 @@ Exemplo: Serviço responsável por processar pagamentos via PIX e cartão.
 
 ### Perguntas 4+ — Dinâmicas por capacidade do template
 
-Da Pergunta 4 em diante, gere perguntas dinamicamente com base nas capacidades do
-template (não hardcode opções nesta etapa).
+Da Pergunta 4 em diante, gere perguntas dinamicamente com base nas capacidades lidas
+do `TEMPLATE-MANIFEST.json` (já em contexto desde o início da Fase 1).
 
 Fluxo obrigatório:
-1. Ler capacidades do template via GitHub MCP (`get_file_contents`) a partir dos
-   artefatos de manifesto/referência disponíveis.
-2. Montar perguntas somente para capacidades existentes no template atual.
+1. Usar o `TEMPLATE-MANIFEST.json` já carregado — **não fazer nova chamada MCP**.
+2. Montar perguntas somente para capacidades presentes no manifesto.
 3. Exibir apenas opções válidas para cada capacidade.
 4. Pular perguntas de capacidades não suportadas.
-5. Se a leitura remota falhar, interromper o fluxo e pedir ao usuário para
-   habilitar o GitHub MCP.
 
 Mapeamento mínimo de saída (manter estas variáveis para as fases seguintes):
 - `APP_TYPE` (quando o template suportar variação de tipo de aplicação)
@@ -110,19 +135,16 @@ Aguarde confirmação antes de prosseguir.
 
 ## Fase 3 — Decisão de Módulos
 
-Decida os módulos com base no que o template realmente oferece.
+Decida os módulos com base no `TEMPLATE-MANIFEST.json` já em contexto.
 
 Fluxo obrigatório:
-1. Leia via GitHub MCP (`get_file_contents`) os artefatos de template/manifesto que
-   indicam módulos e capacidades suportadas.
+1. Usar o manifesto já carregado na Fase 1 — **não fazer nova chamada MCP**.
 2. Monte a lista de módulos elegíveis do template atual.
 3. Cruze as respostas do usuário com os módulos elegíveis e selecione apenas a interseção.
 4. Trate capacidades pedidas pelo usuário que não existirem no template como divergência:
    - informe claramente a limitação,
    - proponha a alternativa mais próxima suportada,
    - aguarde confirmação antes de seguir.
-5. Se a leitura remota falhar, interrompa o fluxo e peça ao usuário para
-   habilitar o GitHub MCP.
 
 Regras mínimas de seleção:
 - Sempre incluir `core` e `application` quando estiverem disponíveis no template.
@@ -135,62 +157,78 @@ Adaptações condicionais (quando suportadas no template):
 - SQS: usar o módulo de mensageria base indicado pelo template e aplicar adaptação SQS.
 - Cache local: aplicar configuração local sem incluir módulo de cache servidor.
 
+Consulte `./references/module-dependencies.md` para as regras detalhadas de seleção
+e dependências inter-módulo.
+
 ---
 
-## Fase 4 — Geração dos Arquivos Adaptados
+## Fase 4 — Geração Local dos Arquivos Adaptados
 
-Para cada arquivo do template, aplique as seguintes substituições de tokens:
+Execute na seguinte ordem, sem pular etapas:
+
+### 4.1 — Ler arquivos do template via MCP
+
+Para cada módulo selecionado, leia os arquivos necessários via `get_file_contents`.
+Use os caminhos listados no `TEMPLATE-MANIFEST.json`.
+Leia **somente os arquivos dos módulos selecionados** — não leia módulos excluídos.
+
+### 4.2 — Preparar mapa de substituição
+
+Monte o mapa de tokens com os valores coletados na Fase 1:
 
 ```
-com.mycompany.template  →  {NAMESPACE}
-java-hexagonal-template →  {PROJECT_NAME}
-JavaHexagonalTemplate   →  {PROJECT_CLASS_PREFIX}  (em nomes de classes)
-hexagonal_db            →  {PROJECT_NAME_SNAKE}
+com.mycompany.template   →  {NAMESPACE}
+com.mycompany            →  {NAMESPACE_ROOT}
+java-hexagonal-template  →  {PROJECT_NAME}
+JavaHexagonalTemplate    →  {PROJECT_CLASS_PREFIX}
+hexagonal_db             →  {PROJECT_NAME_SNAKE}
 hexagonal-template-group →  {PROJECT_NAME}-group
+my-service               →  {PROJECT_NAME}
 ```
 
-### Arquivos críticos a adaptar
+Consulte `./references/files-to-adapt.md` para as regras de substituição por tipo de arquivo.
 
-Consulte `./references/files-to-adapt.md` para a lista completa com localização exata
-de cada token por arquivo.
+### 4.3 — Criar estrutura local e materializar arquivos
 
-### Remoção de módulos não utilizados
+1. Criar a estrutura de diretórios no workspace preservando a organização do template.
+2. Para cada arquivo de cada módulo incluído, aplicar as substituições do mapa acima.
+3. Renomear caminhos de pacote: `com/mycompany/template/` → caminho derivado de `{NAMESPACE}`.
+4. Ordem de geração: `pom.xml` raiz → `core/` → módulos `infra-*` → `application/`.
 
-Remova do `pom.xml` raiz as referências aos módulos excluídos:
-```xml
-<!-- Exemplo: se DATABASE != postgres, remover: -->
-<module>infra-postgres</module>
+Arquivos adicionais a criar:
+- `README.md` adaptado (use `./references/readme-template.md`)
+- `AGENT.md` com contexto do novo projeto
+- `.gitignore` (copiar do template)
+- `docker-compose.yml` filtrado pelos serviços utilizados
+
+Remover do `pom.xml` raiz as referências `<module>` de módulos excluídos.
+Remover do `application/pom.xml` as `<dependency>` de módulos excluídos.
+
+### 4.4 — Validação Maven
+
+Execute em sequência:
+```
+mvn clean compile
+mvn test
+mvn package
 ```
 
-E remova do `application/pom.xml` as dependências dos módulos excluídos.
+**Se qualquer comando falhar:**
+1. Exiba o erro completo ao usuário.
+2. Identifique o arquivo e a linha responsável pelo erro.
+3. Pergunte ao usuário se deve tentar corrigir automaticamente antes de continuar.
+4. Só prossiga após confirmação explícita.
 
----
+### 4.5 — Conclusão
 
-## Fase 5 — Geração Local dos Arquivos
-
-Execute na seguinte ordem:
-
-1. **Criar a estrutura local do projeto** no workspace atual, preservando a organização do template.
-2. **Para cada módulo incluído**, materializar os arquivos adaptados localmente.
-   Priorize a ordem: `pom.xml` raiz → `core/` → módulos infra → `application/`.
-3. **Criar arquivos adicionais:**
-   - `README.md` adaptado (ver template em `./references/readme-template.md`)
-   - `AGENT.md` atualizado com o contexto do novo projeto
-   - `.gitignore` (copiar do original)
-   - `docker-compose.yml` filtrado pelos serviços utilizados
-4. **Executar a validação final do projeto**, nesta ordem:
-   - `mvn clean compile`
-   - `mvn test`
-   - `mvn package`
-5. **Confirmar ao usuário** que a geração foi concluída localmente e indicar os caminhos principais dos arquivos gerados.
-6. **Se tudo tiver dado certo**, sugerir ao usuário criar um commit e fazer push para o repositório remoto, pedindo confirmação explícita antes de qualquer ação.
+1. Confirme ao usuário que a geração foi concluída localmente.
+2. Liste os caminhos principais dos arquivos gerados.
+3. Sugira (mas não execute) criar um commit e fazer push, pedindo confirmação explícita.
 
 ---
 
 ## Referências
 
-- `./references/files-to-adapt.md` — Lista exata de arquivos e tokens por arquivo
+- `./references/files-to-adapt.md` — Regras de substituição de tokens por tipo de arquivo
 - `./references/readme-template.md` — Template de README.md para o novo projeto
-- `./references/module-dependencies.md` — Dependências Maven por módulo para copiar
-
-Leia esses arquivos conforme necessário durante a geração.
+- `./references/module-dependencies.md` — Dependências Maven por módulo e regras de seleção

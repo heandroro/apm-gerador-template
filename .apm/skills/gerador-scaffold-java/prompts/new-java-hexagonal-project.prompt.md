@@ -8,7 +8,7 @@ Você quer criar um novo projeto Java com Arquitetura Hexagonal.
 Vou conduzir uma entrevista rápida para coletar as configurações do projeto e então
 gerar os arquivos localmente no workspace com base no template.
 
-Por favor, responda às perguntas abaixo. Vou processar tudo ao final.
+Por favor, responda às perguntas abaixo uma de cada vez.
 
 ---
 
@@ -37,22 +37,35 @@ Por favor, responda às perguntas abaixo. Vou processar tudo ao final.
 
 **4+ Perguntas derivadas do template (dinâmicas)**
 
-A partir da Pergunta 4, não use opções fixas hardcoded neste prompt.
+<!-- INSTRUÇÃO INTERNA PARA A LLM — não exibir ao usuário:
+Antes de continuar a entrevista, leia `TEMPLATE-MANIFEST.json` do repositório de template
+(owner: heandroro, repo: java-hexagonal-template, branch: main) via get_file_contents.
 
-Antes de continuar a entrevista:
-1. Leia as capacidades do template via GitHub MCP (`get_file_contents`) a partir dos artefatos de template/manifesto disponíveis.
-2. Gere somente as perguntas suportadas pelo template atual (ex.: tipo de app, protocolo/broker, banco, cache, integrações).
-3. Para cada pergunta dinâmica, mostre apenas opções válidas naquele template.
-4. Se uma capacidade não existir no template, não pergunte.
-5. Se a leitura remota falhar, interrompa o fluxo e peça ao usuário para habilitar o GitHub MCP.
+O manifesto expõe capacidades no formato:
+{
+  "modules": ["core", "application", "infra-api", "infra-kafka", ...],
+  "capabilities": {
+    "appTypes": ["api", "worker"],
+    "protocols": ["rest", "grpc"],
+    "brokers": ["kafka", "sqs"],
+    "databases": ["postgres", "dynamodb"],
+    "caches": ["server", "local", "none"],
+    "httpClients": ["feign", "none"]
+  }
+}
+
+Para cada chave em `capabilities` presente no manifesto:
+- Gere uma pergunta ao usuário mostrando as opções válidas
+- Pule a pergunta se a chave não existir no manifesto
+- Nunca hardcode opções que não venham do manifesto
+
+Se a leitura remota falhar, interrompa o fluxo e peça ao usuário para habilitar o GitHub MCP.
+-->
 
 ---
 
-der certo, o skill deve apenas sugerir commit e push ao usuário, aguardando confirmação.
 ## Próximo passo
 
-Após coletar as respostas:
-
-1. Execute o skill `gerador-scaffold-java` com as variáveis preenchidas.
-2. O skill deve gerar localmente no workspace.
-3. Não faça commit nem push automáticos; apenas sugira ao usuário, com confirmação explícita.
+Após coletar as respostas, execute o skill `gerador-scaffold-java` com as variáveis preenchidas.
+O skill deve gerar localmente no workspace. Não faça commit nem push automáticos;
+apenas sugira ao usuário, com confirmação explícita.
