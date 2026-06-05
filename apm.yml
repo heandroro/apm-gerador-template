@@ -5,7 +5,7 @@ description: APM package for scaffolding Java Hexagonal Architecture projects fr
   MCP for dynamic module selection and token substitution.
 author: heandroro
 license: MIT
-type: package
+type: hybrid
 includes: auto
 
 # Package-level dependencies (GitHub MCP — required by all skills)
