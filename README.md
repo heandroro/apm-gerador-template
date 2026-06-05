@@ -11,9 +11,17 @@ Official APM references: [microsoft.github.io/apm](https://microsoft.github.io/a
 apm install heandroro/apm-gerador-template
 ```
 
-## Requirements
+## Setup (Required)
 
-The GitHub MCP server must be connected with a valid `GITHUB_TOKEN` to read template data:
+### 1. Create or get a GitHub personal access token
+
+Generate a token at: https://github.com/settings/tokens
+
+Minimum scopes needed: `public_repo` (read-only access to public repositories)
+
+### 2. Configure GitHub MCP in your Claude Code settings
+
+Add to your `settings.json` or `settings.local.json`:
 
 ```json
 {
@@ -21,11 +29,23 @@ The GitHub MCP server must be connected with a valid `GITHUB_TOKEN` to read temp
     "github": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-github"],
-      "env": { "GITHUB_TOKEN": "<your-token>" }
+      "env": {
+        "GITHUB_TOKEN": "<your-github-token-here>"
+      }
     }
   }
 }
 ```
+
+### 3. Verify the setup
+
+The skill will automatically detect if GitHub MCP is configured and ready.
+
+If configuration is missing, the skill will:
+- Check if `GITHUB_TOKEN` exists → suggest activating GitHub MCP
+- Check if token is missing → suggest both token and MCP setup
+
+No manual verification needed — the skill handles it.
 
 ## Usage
 
@@ -65,14 +85,7 @@ The prompt template is now bundled as a skill asset at:
 | `infra-valkey` | `cache = server` |
 | `infra-client-api` | `http_client = feign` |
 
-All files are adapted with token substitution and written locally:
-
-| Template token | Replaced by |
-| --- | --- |
-| `com.mycompany.template` | Your namespace (groupId) |
-| `java-hexagonal-template` | Your project name (artifactId) |
-| `JavaHexagonalTemplate` | PascalCase class prefix |
-| `hexagonal_db` | Snake-case database name |
+All files are adapted with token substitution and written locally. See the skill documentation for the complete token reference.
 
 ## Template source
 
