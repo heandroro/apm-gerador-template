@@ -1,7 +1,7 @@
 ---
 name: gerador-scaffold-java
 description: "Use when the user wants to create a new Java project from the hexagonal template (https://github.com/heandroro/java-hexagonal-template). Triggers include: \"criar projeto\", \"novo projeto Java\", \"gerar projeto\", \"scaffolding\", \"criar repositório hexagonal\", \"novo serviço Java\", \"criar microserviço\", or any mention of starting a new Java service based on the hexagonal architecture template. Conducts a structured interview, reads template data via the GitHub MCP, and generates the adapted files locally in the workspace by default. Apply even when the user says only \"quero criar um projeto\" or \"me ajuda a criar um serviço novo\"."
-argument-hint: "Opcionalmente informe o nome do projeto ou namespace (ex: payment-service, com.minhaempresa.pagamentos)"
+argument-hint: "Opcionalmente informe o nome do projeto, namespace (ex: payment-service, com.minhaempresa.pagamentos), ou `--refresh-cache` para forçar releitura do template mesmo com cache válido."
 ---
 
 # Agent Package Manager — Java Hexagonal Template
@@ -120,10 +120,41 @@ Este fluxo é **somente leitura remota**.
 
 ---
 
+## Pré-Fase 1 — Verificação de Cache Local
+
+Antes de fazer qualquer chamada MCP, verifique se existe um cache local válido.
+
+**Localização do cache:** `.apm/skills/gerador-scaffold-java/cache/template-config.json`
+
+**Estrutura esperada:**
+```json
+{
+  "cachedAt": "2026-06-06T14:30:00Z",
+  "templateVersion": "string",
+  "manifest": { ...conteúdo de TEMPLATE-MANIFEST.json... },
+  "generator": { ...conteúdo de GENERATOR.json... }
+}
+```
+
+**Lógica de decisão:**
+
+1. Verificar se o argumento `--refresh-cache` foi passado → se sim, pular para passo 3.
+2. Tentar ler o arquivo de cache local:
+   - Se existir e `cachedAt` for há menos de 24 horas → usar cache, pular chamadas MCP de configuração.
+     Informar ao usuário: `[cache] Usando configuração do template em cache (atualizado em {cachedAt}).`
+   - Se ausente ou `cachedAt` ≥ 24h atrás → prosseguir para passo 3.
+3. Buscar via MCP (chamadas descritas na Fase 1 abaixo).
+4. Após busca bem-sucedida, serializar o resultado em `.apm/skills/gerador-scaffold-java/cache/template-config.json`
+   com `cachedAt` = timestamp ISO atual e `templateVersion` = valor de `TEMPLATE-MANIFEST.json.version`.
+   Informar ao usuário: `[cache] Configuração do template atualizada.`
+
+---
+
 ## Fase 1 — Entrevista de Projeto
 
 **Antes da primeira pergunta**, leia os dois arquivos de configuração via `get_file_contents`
-(owner/repo/branch definidos acima). Armazene ambos em contexto.
+(owner/repo/branch definidos acima) — **somente se o cache não foi utilizado na Pré-Fase 1**.
+Armazene ambos em contexto.
 
 Faça as perguntas abaixo **uma de cada vez**, aguardando a resposta antes de prosseguir.
 Use linguagem amigável e exemplos concretos para guiar o usuário.
@@ -238,7 +269,9 @@ Execute na seguinte ordem, sem pular etapas:
 
 ### 4.1 — Ler arquivos do template via MCP
 
-Para cada módulo selecionado, leia os arquivos necessários via `get_file_contents`.
+Emita todas as chamadas `get_file_contents` dos módulos selecionados **simultaneamente**
+— não sequencialmente. Aguarde todas concluírem antes de iniciar Phase 4.2.
+
 Use os caminhos listados em `TEMPLATE-MANIFEST.json.modules[].manifest` para descobrir
 os arquivos críticos de cada módulo.
 Leia **somente os arquivos dos módulos selecionados** — não leia módulos excluídos.
