@@ -1,7 +1,7 @@
 ---
 name: gerador-scaffold-java
 description: "Use when the user wants to create a new Java project from the hexagonal template (https://github.com/heandroro/java-hexagonal-template). Triggers include: \"criar projeto\", \"novo projeto Java\", \"gerar projeto\", \"scaffolding\", \"criar repositório hexagonal\", \"novo serviço Java\", \"criar microserviço\", or any mention of starting a new Java service based on the hexagonal architecture template. Conducts a structured interview, reads template data via the GitHub MCP, and generates the adapted files locally in the workspace by default. Apply even when the user says only \"quero criar um projeto\" or \"me ajuda a criar um serviço novo\"."
-argument-hint: "Opcionalmente informe o nome do projeto ou namespace (ex: payment-service, com.minhaempresa.pagamentos)"
+argument-hint: "Opcionalmente informe o nome do projeto, namespace (ex: payment-service, com.minhaempresa.pagamentos), ou `--refresh-cache` para forçar releitura do template mesmo com cache válido."
 ---
 
 # Agent Package Manager — Java Hexagonal Template
@@ -24,13 +24,15 @@ branch: main
 
 Use sempre estes valores nas chamadas `get_file_contents`. Nunca infira owner/repo de outras fontes.
 
-Ponto de entrada obrigatório:
+Arquivos de entrada obrigatórios — leia **ambos** na Fase 1:
 ```
-path: TEMPLATE-MANIFEST.json
+path: TEMPLATE-MANIFEST.json   → stack, módulos disponíveis, replaceTokens[], naming/mapper rules
+path: GENERATOR.json           → profiles[] pré-configurados e questions[] para entrevista guiada
 ```
 
-Este arquivo lista todos os módulos disponíveis e as capacidades suportadas pelo template.
-Leia-o **uma única vez** na Fase 1 e reutilize seu conteúdo em todas as fases seguintes.
+Leia cada um **uma única vez** na Fase 1 e reutilize o conteúdo em todas as fases seguintes.
+O template é a **fonte da verdade**: módulos, tokens e perguntas vêm dos arquivos acima,
+não de arquivos de referência locais deste gerador.
 Não faça chamadas MCP adicionais sem necessidade explícita.
 
 ---
@@ -39,9 +41,9 @@ Não faça chamadas MCP adicionais sem necessidade explícita.
 
 Para otimizar custo de tokens e processamento da LLM:
 
-1. Leia `TEMPLATE-MANIFEST.json` apenas uma vez (Fase 1) e mantenha em contexto.
+1. Leia `TEMPLATE-MANIFEST.json` e `GENERATOR.json` apenas uma vez (Fase 1) e mantenha em contexto.
 2. Mantenha respostas curtas e orientadas a decisão; evite repetir blocos longos de instrução.
-3. Carregue detalhes de `./references/*` somente quando a fase exigir.
+3. Carregue detalhes de `./references/*` somente quando a fase exigir (regras estruturais de formato).
 4. No sumário de confirmação, apresente apenas variáveis finais, módulos selecionados e ações pendentes.
 5. Evite reimprimir listas completas de tokens/arquivos quando não houver mudança.
 
@@ -118,10 +120,41 @@ Este fluxo é **somente leitura remota**.
 
 ---
 
+## Pré-Fase 1 — Verificação de Cache Local
+
+Antes de fazer qualquer chamada MCP, verifique se existe um cache local válido.
+
+**Localização do cache:** `.apm/skills/gerador-scaffold-java/cache/template-config.json`
+
+**Estrutura esperada:**
+```json
+{
+  "cachedAt": "2026-06-06T14:30:00Z",
+  "templateVersion": "string",
+  "manifest": { ...conteúdo de TEMPLATE-MANIFEST.json... },
+  "generator": { ...conteúdo de GENERATOR.json... }
+}
+```
+
+**Lógica de decisão:**
+
+1. Verificar se o argumento `--refresh-cache` foi passado → se sim, pular para passo 3.
+2. Tentar ler o arquivo de cache local:
+   - Se existir e `cachedAt` for há menos de 24 horas → usar cache, pular chamadas MCP de configuração.
+     Informar ao usuário: `[cache] Usando configuração do template em cache (atualizado em {cachedAt}).`
+   - Se ausente ou `cachedAt` ≥ 24h atrás → prosseguir para passo 3.
+3. Buscar via MCP (chamadas descritas na Fase 1 abaixo).
+4. Após busca bem-sucedida, serializar o resultado em `.apm/skills/gerador-scaffold-java/cache/template-config.json`
+   com `cachedAt` = timestamp ISO atual e `templateVersion` = valor de `TEMPLATE-MANIFEST.json.version`.
+   Informar ao usuário: `[cache] Configuração do template atualizada.`
+
+---
+
 ## Fase 1 — Entrevista de Projeto
 
-**Antes da primeira pergunta**, leia `TEMPLATE-MANIFEST.json` via `get_file_contents`
-(owner/repo/branch definidos acima). Armazene o resultado em contexto.
+**Antes da primeira pergunta**, leia os dois arquivos de configuração via `get_file_contents`
+(owner/repo/branch definidos acima) — **somente se o cache não foi utilizado na Pré-Fase 1**.
+Armazene ambos em contexto.
 
 Faça as perguntas abaixo **uma de cada vez**, aguardando a resposta antes de prosseguir.
 Use linguagem amigável e exemplos concretos para guiar o usuário.
@@ -153,24 +186,43 @@ Exemplo: Serviço responsável por processar pagamentos via PIX e cartão.
 ```
 - Armazene como: `PROJECT_DESCRIPTION`
 
-### Perguntas 4+ — Dinâmicas por capacidade do template
+### Pergunta 4 — Perfil Pré-configurado
 
-Da Pergunta 4 em diante, gere perguntas dinamicamente com base nas capacidades lidas
-do `TEMPLATE-MANIFEST.json` (já em contexto desde o início da Fase 1).
+Antes de fazer perguntas individuais, leia `GENERATOR.json.profiles[]` (já em contexto)
+e apresente os perfis disponíveis:
 
-Fluxo obrigatório:
-1. Usar o `TEMPLATE-MANIFEST.json` já carregado — **não fazer nova chamada MCP**.
-2. Montar perguntas somente para capacidades presentes no manifesto.
-3. Exibir apenas opções válidas para cada capacidade.
-4. Pular perguntas de capacidades não suportadas.
+```
+Existem perfis pré-configurados para casos de uso comuns:
 
-Mapeamento mínimo de saída (manter estas variáveis para as fases seguintes):
-- `APP_TYPE` (quando o template suportar variação de tipo de aplicação)
-- `API_PROTOCOL` (quando `APP_TYPE = api` e houver protocolos alternativos)
-- `WORKER_BROKER` (quando `APP_TYPE = worker` e houver brokers alternativos)
-- `DATABASE` (quando o template suportar opções de persistência)
-- `CACHE` (quando o template suportar opções de cache)
-- `HTTP_CLIENT` (quando o template suportar integrações HTTP de saída)
+• {profile.label}: {profile.description}
+[listar todos os profiles[]]
+
+Algum destes perfis se encaixa no que você precisa? (informe o nome ou "nenhum")
+```
+
+**Se o usuário escolher um perfil:**
+- Ler `profiles[nome].modules[]`, `profiles[nome].dockerServices[]`, `profiles[nome].springProfiles[]`
+- Registrar como `selectedModules[]`, `selectedDockerServices[]`, `selectedSpringProfiles[]`
+- Pular as perguntas individuais (5+) — ir direto para Fase 2
+
+**Se o usuário responder "nenhum" ou preferir personalizar:**
+- Prosseguir com as Perguntas 5+ abaixo
+
+### Perguntas 5+ — Individuais por capacidade (lidas de GENERATOR.json)
+
+Se nenhum perfil foi escolhido, conduza as perguntas individualmente usando
+`GENERATOR.json.questions[]` (já em contexto). **Não fazer nova chamada MCP.**
+
+Para cada `question` em `questions[]`, em ordem:
+1. Exibir `question.prompt` como texto da pergunta
+2. Listar `option.label` para cada `option` em `question.options[]`
+3. Se `question.multiSelect = true`, aceitar múltiplas respostas
+4. Registrar a seleção pelo `question.id`
+
+Ao final de todas as perguntas, consolidar:
+- `selectedModules[]` = union de `option.modules[]` de todas as opções escolhidas
+- `selectedDockerServices[]` = union de `option.dockerServices[]` de todas as opções escolhidas
+- `selectedSpringProfiles[]` = union de `option.springProfiles[]` de todas as opções escolhidas
 
 ---
 
@@ -179,8 +231,10 @@ Mapeamento mínimo de saída (manter estas variáveis para as fases seguintes):
 Antes de gerar qualquer arquivo, apresente um sumário compacto:
 
 - `NAMESPACE`, `PROJECT_NAME`, `PROJECT_DESCRIPTION`
-- Tipo e capacidades selecionadas (`APP_TYPE`, protocolo/broker, `DATABASE`, `CACHE`, `HTTP_CLIENT`)
-- Módulos que serão gerados (apenas os incluídos — não listar módulos excluídos)
+- Perfil escolhido (se aplicável) ou respostas individuais por question.id
+- Módulos que serão gerados: `selectedModules[]` (apenas os incluídos — não listar excluídos)
+- Docker services a manter: `selectedDockerServices[]`
+- Spring Profiles a ativar: `selectedSpringProfiles[]`
 - Ação pendente: confirmação explícita do usuário para gerar localmente
 
 Pergunta final obrigatória:
@@ -193,30 +247,19 @@ Aguarde confirmação antes de prosseguir.
 
 ## Fase 3 — Decisão de Módulos
 
-Decida os módulos com base no `TEMPLATE-MANIFEST.json` já em contexto.
+Decida os módulos com base nos dados já em contexto da Fase 1 — **não fazer nova chamada MCP**.
 
 Fluxo obrigatório:
-1. Usar o manifesto já carregado na Fase 1 — **não fazer nova chamada MCP**.
-2. Monte a lista de módulos elegíveis do template atual.
-3. Cruze as respostas do usuário com os módulos elegíveis e selecione apenas a interseção.
-4. Trate capacidades pedidas pelo usuário que não existirem no template como divergência:
-   - informe claramente a limitação,
-   - proponha a alternativa mais próxima suportada,
-   - aguarde confirmação antes de seguir.
+1. Partir de `selectedModules[]` coletados na Fase 1.
+2. Adicionar sempre os módulos de `GENERATOR.json.postSetup.alwaysInclude` (ex: `core`, `application`).
+3. Verificar exclusividade mútua usando `GENERATOR.json.postSetup.mutuallyExclusive`:
+   - Se dois módulos mutuamente exclusivos estiverem na lista, informar o conflito,
+     apresentar as opções em conflito e aguardar o usuário escolher uma.
+4. Validar que todos os módulos selecionados existem em `TEMPLATE-MANIFEST.json.modules[]`.
+   - Módulo inexistente → informar limitação, propor alternativa mais próxima, aguardar confirmação.
 
-Regras mínimas de seleção:
-- Sempre incluir `core` e `application` quando estiverem disponíveis no template.
-- Incluir módulos opcionais apenas se:
-  - a capacidade foi solicitada pelo usuário, e
-  - o módulo/capacidade existe no template atual.
-- Não inventar módulo inexistente no template.
-
-Adaptações condicionais (quando suportadas no template):
-- SQS: usar o módulo de mensageria base indicado pelo template e aplicar adaptação SQS.
-- Cache local: aplicar configuração local sem incluir módulo de cache servidor.
-
-Consulte `./references/module-dependencies.md` para as regras detalhadas de seleção
-e dependências inter-módulo.
+Consulte `./references/module-dependencies.md` apenas para as regras de **formato estrutural**
+(como montar entradas `<module>` no pom.xml raiz e `<dependency>` no application/pom.xml).
 
 ---
 
@@ -226,39 +269,52 @@ Execute na seguinte ordem, sem pular etapas:
 
 ### 4.1 — Ler arquivos do template via MCP
 
-Para cada módulo selecionado, leia os arquivos necessários via `get_file_contents`.
-Use os caminhos listados no `TEMPLATE-MANIFEST.json`.
+Emita todas as chamadas `get_file_contents` dos módulos selecionados **simultaneamente**
+— não sequencialmente. Aguarde todas concluírem antes de iniciar Phase 4.2.
+
+Use os caminhos listados em `TEMPLATE-MANIFEST.json.modules[].manifest` para descobrir
+os arquivos críticos de cada módulo.
 Leia **somente os arquivos dos módulos selecionados** — não leia módulos excluídos.
 
 ### 4.2 — Preparar mapa de substituição
 
-Monte o mapa de tokens com os valores coletados na Fase 1:
+Monte o mapa de tokens usando `TEMPLATE-MANIFEST.json.replaceTokens[]` (já em contexto).
 
-```
-com.mycompany.template   →  {NAMESPACE}
-com.mycompany            →  {NAMESPACE_ROOT}
-java-hexagonal-template  →  {PROJECT_NAME}   (artifactId, spring.application.name e referências no código)
-hexagonal_db             →  {PROJECT_NAME_SNAKE}
-hexagonal-template-group →  {PROJECT_NAME}-group
-```
+Para cada entrada em `replaceTokens[]`, associar o `token` original ao valor correspondente:
 
-Consulte `./references/files-to-adapt.md` para as regras de substituição por tipo de arquivo.
+| `replaceTokens[].token` | Valor correspondente | Condição |
+| --- | --- | --- |
+| `com.mycompany.template` | `{NAMESPACE}` | Sempre |
+| `com.mycompany` | `{NAMESPACE_ROOT}` | Sempre |
+| `java-hexagonal-template` | `{PROJECT_NAME}` | Sempre |
+| `hexagonal_db` | `{PROJECT_NAME_SNAKE}` | Sempre |
+| `hexagonal-template-group` | `{PROJECT_NAME}-group` | Sempre |
+| `user-events-queue` | `{PROJECT_NAME_SNAKE}-events-queue` | Somente se `infra-sqs` selecionado |
+| `user-events-topic` | `{PROJECT_NAME_SNAKE}-events-topic` | Somente se `infra-sns` selecionado |
+| `users` | `{ENTITY_NAME_PLURAL}` | Somente se `infra-dynamodb` selecionado |
+
+A lista acima reflete `replaceTokens[]` da versão atual do template. Se o template evoluir
+e adicionar novos tokens, eles estarão em `replaceTokens[]` com suas `description` explicando
+o contexto — adicione-os ao mapa antes de aplicar substituições.
+
+Consulte `./references/files-to-adapt.md` para as regras de substituição por **tipo de arquivo**
+(Java, pom.xml, application.yml, docker-compose.yml, etc.).
 
 ### 4.3 — Criar estrutura local e materializar arquivos
 
 1. Criar a estrutura de diretórios no workspace preservando a organização do template.
 2. Para cada arquivo de cada módulo incluído, aplicar as substituições do mapa acima.
-3. Renomear caminhos de pacote: `com/mycompany/template/` → caminho derivado de `{NAMESPACE}`.
-4. Ordem de geração: `pom.xml` raiz → `core/` → módulos `infra-*` → `application/`.
+3. Renomear caminhos de pacote Java: `com/mycompany/template/` → caminho derivado de `{NAMESPACE}`.
+4. Filtrar `infra/local/docker-compose.yml`: manter apenas os serviços presentes em `selectedDockerServices[]`.
+5. Ordem de geração: `pom.xml` raiz → `core/` → módulos `infra-*` → `application/`.
 
 Arquivos adicionais a criar:
 - `README.md` adaptado (use `./references/readme-template.md`)
-- `AGENT.md` com contexto do novo projeto
+- `AGENTS.md` com contexto do novo projeto
 - `.gitignore` (copiar do template)
-- `docker-compose.yml` filtrado pelos serviços utilizados
 
 Remover do `pom.xml` raiz as referências `<module>` de módulos excluídos.
-Remover do `application/pom.xml` as `<dependency>` de módulos excluídos.
+Remover do `app/application/pom.xml` as `<dependency>` de módulos excluídos.
 
 ### 4.4 — Validação Maven
 
@@ -285,6 +341,6 @@ mvn package
 
 ## Referências
 
-- `./references/files-to-adapt.md` — Regras de substituição de tokens por tipo de arquivo
+- `./references/files-to-adapt.md` — Regras estruturais de substituição por tipo de arquivo (Java, pom.xml, yaml, compose)
 - `./references/readme-template.md` — Template de README.md para o novo projeto
-- `./references/module-dependencies.md` — Dependências Maven por módulo e regras de seleção
+- `./references/module-dependencies.md` — Regras de formato para entradas pom.xml e adaptações condicionais

@@ -1,40 +1,27 @@
-# Module Dependencies — Rules for Project Generation
+# Module Dependencies — Structural Format Rules
 
-This file is intentionally concise. It defines only the rules the generator needs to
-decide which modules and inter-module dependencies must exist in the generated project.
+Este arquivo define as **regras de formato estrutural** que o gerador precisa para montar
+as entradas Maven corretas no projeto gerado.
 
-Do not duplicate full framework dependency blocks here. Those details belong to the
-template repository module `pom.xml` files.
-
----
-
-## 1) Module Selection Matrix
-
-| Input condition | Include module | Notes |
-| --- | --- | --- |
-| Always | `core` | Required in every project |
-| Always | `application` | Bootstrap and runtime wiring |
-| `APP_TYPE = api` | `infra-api` | Inbound HTTP adapter |
-| `APP_TYPE = worker` and `WORKER_BROKER = kafka` | `infra-kafka` | Messaging adapter |
-| `APP_TYPE = worker` and `WORKER_BROKER = sqs` | `infra-kafka` | Generate from kafka base and apply SQS adaptation |
-| `DATABASE = postgres` or `both` | `infra-postgres` | PostgreSQL adapter |
-| `DATABASE = dynamodb` or `both` | `infra-dynamodb` | DynamoDB adapter |
-| `CACHE = server` | `infra-valkey` | Redis/Valkey adapter |
-| `HTTP_CLIENT = feign` | `infra-client-api` | Outbound HTTP client adapter |
+**Seleção de módulos não é feita aqui.** O gerador lê `GENERATOR.json.questions[].options[].modules`
+(e `profiles[].modules[]`) do próprio template para determinar quais módulos incluir, e usa
+`GENERATOR.json.postSetup.mutuallyExclusive` para validar exclusividade mútua.
+Este arquivo cobre apenas o **como** inserir as entradas no pom.xml.
 
 ---
 
-## 2) `application/pom.xml` Inter-module Dependencies
+## 1) `app/application/pom.xml` — Dependências Inter-módulo
 
-After module selection, `application/pom.xml` must depend on all selected modules
-using `{NAMESPACE}` and `${project.version}`.
+Após selecionar os módulos, `app/application/pom.xml` deve depender de todos os módulos
+selecionados usando `{NAMESPACE}` e `${project.version}`.
 
-Minimum set:
-- Always include `core`
-- Include each selected `infra-*` module
-- Remove dependencies for all excluded modules
+Regras mínimas:
 
-Dependency block pattern:
+- Sempre incluir `core`
+- Incluir cada `infra-*` selecionado
+- Remover `<dependency>` de todos os módulos excluídos
+
+Formato de entrada:
 
 ```xml
 <dependency>
@@ -46,47 +33,72 @@ Dependency block pattern:
 
 ---
 
-## 3) Parent `pom.xml` Module List
+## 2) `pom.xml` Raiz — Lista de Módulos
 
-Keep `<module>` entries only for selected modules.
+Manter `<module>` apenas para módulos selecionados. Os módulos ficam sob `app/`.
 
-Rules:
-- Always keep `core` and `application`
-- Keep selected `infra-*` modules
-- Remove `<module>` lines for excluded modules
+Regras:
 
----
+- Sempre manter `app/core` e `app/application`
+- Manter os `app/infra-*` selecionados
+- Remover linhas `<module>` dos módulos excluídos
 
-## 4) Conditional Adaptations That Affect Generation
+Formato de entrada:
 
-Apply these only when the related option is selected.
-
-### SQS adaptation
-- Trigger: `APP_TYPE = worker` and `WORKER_BROKER = sqs`
-- Actions:
-  - Replace kafka listener annotation with `@SqsListener`
-  - Replace kafka dependency with SQS dependency in the messaging module
-  - Ensure required AWS Spring BOM/import is present in parent `pom.xml`
-
-### DynamoDB adaptation
-- Trigger: `DATABASE = dynamodb` or `both`
-- Actions:
-  - Ensure DynamoDB module is included
-  - Ensure required AWS SDK BOM/import is present in parent `pom.xml`
-
-### OpenFeign adaptation
-- Trigger: `HTTP_CLIENT = feign`
-- Actions:
-  - Ensure `infra-client-api` module is included
-  - Ensure required Spring Cloud BOM/import is present in parent `pom.xml`
+```xml
+<module>app/core</module>
+<module>app/infra-api</module>
+<module>app/application</module>
+```
 
 ---
 
-## 5) Scope of This File
+## 3) Adaptações que Afetam a Geração
 
-Keep this file focused on generation rules only:
-- Which modules to include/exclude
-- Which inter-module dependencies to add/remove
-- Which conditional adaptations are mandatory
+As condições de ativação de cada adaptação são lidas de `GENERATOR.json.questions[].options[]`.
+As ações estruturais abaixo são aplicadas pelo gerador quando o módulo correspondente é selecionado.
 
-Do not add full dependency catalogs or long XML examples here.
+### SQS (`infra-sqs` selecionado)
+
+- Incluir `infra-sqs` como está — já contém `@SqsListener`, publisher e `NoOp` fallback
+- Ativar `@Profile("sqs")` na configuração Spring
+- `spring-cloud-aws-dependencies` BOM já está no pom.xml raiz do template
+
+### SNS (`infra-sns` selecionado)
+
+- Incluir `infra-sns` como está — já contém publisher e `NoOp` fallback
+- Ativar `@Profile("sns")` na configuração Spring
+- `localstack` cobre tanto SQS quanto SNS — adicionar uma única vez mesmo se ambos selecionados
+
+### MariaDB (`infra-mariadb` selecionado)
+
+- Incluir `infra-mariadb` em vez de `infra-postgres` (são mutuamente exclusivos)
+- Ativar `@Profile("mariadb")` na configuração Spring
+- Usar `application-mariadb.yml` para overrides do datasource
+
+### DynamoDB (`infra-dynamodb` selecionado)
+
+- Incluir `infra-dynamodb`
+- Ativar `@Profile("dynamodb")` na configuração Spring
+- `spring-cloud-aws-dependencies` BOM já está no pom.xml raiz do template
+
+### OpenFeign (`infra-client-api` selecionado)
+
+- Incluir `infra-client-api`
+- Spring Cloud BOM já está incluído no pom.xml raiz do template
+- Adicionar serviço `wiremock` ao docker-compose para mock HTTP local
+
+---
+
+## 4) Escopo deste Arquivo
+
+Manter este arquivo focado apenas em:
+
+- Formato de entradas `<module>` e `<dependency>` no pom.xml
+- Ações estruturais das adaptações condicionais
+
+Não adicionar aqui:
+
+- Qual módulo incluir para qual capacidade (→ `GENERATOR.json.questions[]`)
+- Lista de tokens a substituir (→ `TEMPLATE-MANIFEST.json.replaceTokens[]`)
+- Quais serviços docker manter (→ `GENERATOR.json.questions[].options[].dockerServices`)
