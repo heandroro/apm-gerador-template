@@ -1,23 +1,16 @@
-# Files to Adapt — Token Substitution Rules
+# Files to Adapt — Structural Substitution Rules
 
 A descoberta dos arquivos a adaptar é feita em tempo de execução a partir do
 `TEMPLATE-MANIFEST.json` lido via GitHub MCP. Este arquivo define apenas as
-**regras de substituição** por tipo de arquivo — não lista arquivos individualmente.
+**regras estruturais de substituição** por tipo de arquivo.
 
----
+**Tokens não são definidos aqui.** O gerador lê `TEMPLATE-MANIFEST.json.replaceTokens[]`
+do próprio template para obter a lista autoritativa de tokens e suas descrições.
+Este arquivo cobre apenas o **como** aplicar as substituições em cada tipo de arquivo.
 
-## Token Reference Table
-
-| Token (original) | Substituir por | Contexto |
-| --- | --- | --- |
-| `com.mycompany.template` | `{NAMESPACE}` | Declaração de pacote, imports Java |
-| `com.mycompany` | `{NAMESPACE_ROOT}` | Pacote pai quando NAMESPACE tem profundidade > 2 |
-| `java-hexagonal-template` | `{PROJECT_NAME}` | artifactId em pom.xml, nome do repositório, spring.application.name |
-| `hexagonal_db` | `{PROJECT_NAME_SNAKE}` | Nome do banco PostgreSQL / MariaDB |
-| `hexagonal-template-group` | `{PROJECT_NAME}-group` | Consumer group ID do Kafka |
-| `user-events-queue` | `{PROJECT_NAME_SNAKE}-events-queue` | Nome da fila SQS (substituir só se MESSAGING = sqs) |
-| `user-events-topic` | `{PROJECT_NAME_SNAKE}-events-topic` | Nome do tópico SNS (substituir só se MESSAGING = sns) |
-| `users` | `{ENTITY_NAME_PLURAL}` | Nome da tabela DynamoDB (substituir só se DATABASE = dynamodb) |
+**Serviços docker não são definidos aqui.** O gerador lê `selectedDockerServices[]`
+consolidado das opções em `GENERATOR.json.questions[].options[].dockerServices`
+(ou `profiles[].dockerServices[]`) para saber quais serviços manter no compose.
 
 ---
 
@@ -25,7 +18,7 @@ A descoberta dos arquivos a adaptar é feita em tempo de execução a partir do
 
 ### Arquivos `*.java`
 
-- Substituir `com.mycompany.template` por `{NAMESPACE}` em:
+- Substituir o token de pacote base em:
   - declaração `package`
   - todos os `import`
   - literais de string que referenciem o pacote
@@ -35,39 +28,32 @@ A descoberta dos arquivos a adaptar é feita em tempo de execução a partir do
 
 ### `pom.xml` (raiz e módulos)
 
-- Substituir `java-hexagonal-template` por `{PROJECT_NAME}` (`<artifactId>`, `<name>`).
-- Substituir `com.mycompany.template` por `{NAMESPACE}` (`<groupId>`).
+- Substituir o token de artifactId pelo nome do projeto (`<artifactId>`, `<name>`).
+- Substituir o token de groupId pelo namespace (`<groupId>`).
 - Remover `<module>app/{módulo}</module>` do pom.xml raiz para cada módulo excluído.
 - Remover `<dependency>` do `app/application/pom.xml` para cada módulo excluído.
 
 ### `app/application/src/main/resources/application.yml`
 
-- Substituir `java-hexagonal-template` por `{PROJECT_NAME}` (`spring.application.name`).
-- Substituir `hexagonal_db` por `{PROJECT_NAME_SNAKE}` (nome do datasource/banco).
-- Substituir `hexagonal-template-group` por `{PROJECT_NAME}-group` (kafka consumer group).
-- Substituir `user-events-queue` por `{PROJECT_NAME_SNAKE}-events-queue` (se MESSAGING = sqs).
-- Substituir `user-events-topic` por `{PROJECT_NAME_SNAKE}-events-topic` (se MESSAGING = sns).
+- Substituir o token de nome da aplicação (`spring.application.name`).
+- Substituir o token de nome do banco de dados (datasource/banco).
+- Substituir o token de consumer group do Kafka.
+- Substituir tokens de fila SQS e tópico SNS — somente se os módulos correspondentes
+  foram selecionados.
 - Remover blocos de configuração dos serviços de infra excluídos
-  (ex: remover bloco `spring.kafka` se não usar Kafka, remover `spring.cloud.aws.sqs` se não usar SQS).
+  (ex: remover bloco `spring.kafka` se não usar Kafka; remover `spring.cloud.aws.sqs`
+  se não usar SQS).
+- O arquivo contém `spring.docker.compose.file: infra/local/docker-compose.yml` —
+  manter este caminho intacto.
 
 ### `infra/local/docker-compose.yml`
 
-O arquivo está em `infra/local/docker-compose.yml` (não na raiz).
-Manter apenas os serviços requeridos pelos módulos selecionados:
+O arquivo está em `infra/local/docker-compose.yml` (não na raiz do projeto).
 
-| Serviço | Manter quando |
-| --- | --- |
-| `postgres` | `DATABASE = postgres` |
-| `mariadb` | `DATABASE = mariadb` |
-| `dynamodb-local` + `dynamodb-init` | `DATABASE = dynamodb` |
-| `valkey` | `CACHE = server` |
-| `kafka` + `schema-registry` | `MESSAGING = kafka` (KRaft — sem Zookeeper) |
-| `localstack` + `localstack-init` | `MESSAGING = sqs` e/ou `MESSAGING = sns` |
-| `wiremock` | `HTTP_CLIENT = feign` |
+Manter apenas os serviços presentes em `selectedDockerServices[]`
+(consolidado dos arquivos do template via `GENERATOR.json`).
 
 Remover todos os outros serviços e seus volumes correspondentes.
-O arquivo `app/application/src/main/resources/application.yml` contém
-`spring.docker.compose.file: infra/local/docker-compose.yml` — manter este caminho.
 
 ### `README.md`
 
@@ -76,15 +62,13 @@ com as variáveis do projeto e capacidades selecionadas.
 
 ### `AGENTS.md`
 
-- Substituir `java-hexagonal-template` por `{PROJECT_NAME}`.
-- Substituir `com.mycompany.template` por `{NAMESPACE}`.
+- Substituir o token de nome do projeto.
+- Substituir o token de namespace/pacote base.
 - Atualizar a seção "Project Overview" com `{PROJECT_DESCRIPTION}`.
 
 ### `TEMPLATE-MANIFEST.json`
 
-- Substituir `java-hexagonal-template` por `{PROJECT_NAME}`.
-- Substituir `com.mycompany.template` por `{NAMESPACE}`.
-- Substituir `hexagonal_db` por `{PROJECT_NAME_SNAKE}`.
+- Substituir os tokens de nome do projeto, namespace e nome do banco.
 - Remover entradas do array `modules` referentes a módulos excluídos.
 
 ---
@@ -107,29 +91,30 @@ Exemplo: `NAMESPACE = com.example.payment` → caminho: `com/example/payment`
 
 ## Adaptações Condicionais
 
-### SQS (quando `MESSAGING = sqs`)
+### SQS (`infra-sqs` selecionado)
 
 Incluir o módulo `infra-sqs` como está — ele já contém `@SqsListener`, publisher e fallback `NoOp`.
 Não adaptar `infra-kafka` para SQS: são módulos independentes no template.
-Substituir tokens de fila: `user-events-queue` → `{PROJECT_NAME_SNAKE}-events-queue`.
+Aplicar substituição do token de fila SQS.
 
-### SNS (quando `MESSAGING = sns`)
+### SNS (`infra-sns` selecionado)
 
 Incluir o módulo `infra-sns` como está — ele já contém publisher e fallback `NoOp`.
-Substituir tokens de tópico: `user-events-topic` → `{PROJECT_NAME_SNAKE}-events-topic`.
+Aplicar substituição do token de tópico SNS.
 
-### MariaDB (quando `DATABASE = mariadb`)
+### MariaDB (`infra-mariadb` selecionado)
 
-Incluir `infra-mariadb` em vez de `infra-postgres`. Os dois têm a mesma interface (`UserRepositoryPort`).
-O arquivo `app/application/src/main/resources/application-mariadb.yml` contém as overrides do datasource.
-Ativar profile `mariadb` ao rodar a aplicação.
+Incluir `infra-mariadb` em vez de `infra-postgres`. Os dois implementam a mesma interface
+(`UserRepositoryPort`) — são mutuamente exclusivos.
+O arquivo `app/application/src/main/resources/application-mariadb.yml` contém as overrides
+do datasource. Ativar profile `mariadb` ao rodar a aplicação.
 
-### DynamoDB (quando `DATABASE = dynamodb`)
+### DynamoDB (`infra-dynamodb` selecionado)
 
-Incluir `infra-dynamodb`. Substituir token de tabela: `users` → `{ENTITY_NAME_PLURAL}`.
+Incluir `infra-dynamodb`. Aplicar substituição do token de tabela DynamoDB.
 No `pom.xml` raiz: garantir que o BOM/import do AWS SDK esteja presente (já incluído no template).
 
-### OpenFeign (quando `HTTP_CLIENT = feign`)
+### OpenFeign (`infra-client-api` selecionado)
 
 Incluir `infra-client-api`.
 No `pom.xml` raiz: garantir que o BOM/import do Spring Cloud esteja presente (já incluído no template).
