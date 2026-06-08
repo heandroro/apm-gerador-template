@@ -47,6 +47,18 @@ Para otimizar custo de tokens e processamento da LLM:
 
 ---
 
+## Diretriz de Paralelismo
+
+Para minimizar o tempo total de execução, aplique batching de tool calls em operações de I/O:
+
+- **Leituras MCP (Fase 4.1)**: emita TODAS as chamadas `get_file_contents` necessárias em **uma única resposta** como tool calls paralelos. Nunca leia arquivo por arquivo em mensagens separadas.
+- **Escritas de arquivo (Fase 4.3)**: após criar o `pom.xml` raiz, emita TODOS os demais arquivos de módulos em **uma única resposta** como Write tool calls paralelos.
+- **Mapa de tokens (Fase 4.2)**: prepare-o na **mesma resposta** em que emite as leituras MCP — o mapa depende apenas dos dados da Fase 1 e não precisa aguardar as leituras concluírem.
+
+Regra geral: se múltiplas operações não têm dependência entre si, emita-as juntas em uma única resposta.
+
+---
+
 ## Pré-requisito: GitHub MCP com GITHUB_TOKEN
 
 **Este skill REQUER GitHub MCP configurado com um `GITHUB_TOKEN` válido.**
@@ -224,13 +236,19 @@ e dependências inter-módulo.
 
 Execute na seguinte ordem, sem pular etapas:
 
-### 4.1 — Ler arquivos do template via MCP
+### 4.1 — Ler arquivos do template via MCP (paralelo)
 
-Para cada módulo selecionado, leia os arquivos necessários via `get_file_contents`.
-Use os caminhos listados no `TEMPLATE-MANIFEST.json`.
+Monte a lista completa de arquivos a ler para todos os módulos selecionados usando os caminhos
+do `TEMPLATE-MANIFEST.json`. Em seguida, emita **todas as chamadas `get_file_contents` em uma
+única resposta** como tool calls paralelos — não aguarde o resultado de uma leitura antes de
+emitir a próxima.
+
 Leia **somente os arquivos dos módulos selecionados** — não leia módulos excluídos.
 
-### 4.2 — Preparar mapa de substituição
+### 4.2 — Preparar mapa de substituição (junto com 4.1)
+
+Monte o mapa de tokens na **mesma resposta** em que emite as leituras MCP da Fase 4.1.
+O mapa depende apenas dos dados coletados na Fase 1 — não há dependência das leituras de arquivo.
 
 Monte o mapa de tokens com os valores coletados na Fase 1:
 
@@ -244,32 +262,29 @@ hexagonal-template-group →  {PROJECT_NAME}-group
 
 Consulte `./references/files-to-adapt.md` para as regras de substituição por tipo de arquivo.
 
-### 4.3 — Criar estrutura local e materializar arquivos
+### 4.3 — Criar estrutura local e materializar arquivos (paralelo)
 
 1. Criar a estrutura de diretórios no workspace preservando a organização do template.
 2. Para cada arquivo de cada módulo incluído, aplicar as substituições do mapa acima.
 3. Renomear caminhos de pacote: `com/mycompany/template/` → caminho derivado de `{NAMESPACE}`.
-4. Ordem de geração: `pom.xml` raiz → `core/` → módulos `infra-*` → `application/`.
+4. Ordem de geração:
+   - **Passo único**: criar `pom.xml` raiz (inclui apenas `<module>` dos módulos selecionados).
+   - **Em seguida**: emitir TODOS os demais arquivos (`core/`, módulos `infra-*`, `application/`,
+     `README.md`, `AGENT.md`, `.gitignore`, `docker-compose.yml`) em **uma única resposta** como
+     Write tool calls paralelos — esses arquivos são independentes entre si.
 
-Arquivos adicionais a criar:
-- `README.md` adaptado (use `./references/readme-template.md`)
-- `AGENT.md` com contexto do novo projeto
-- `.gitignore` (copiar do template)
-- `docker-compose.yml` filtrado pelos serviços utilizados
-
-Remover do `pom.xml` raiz as referências `<module>` de módulos excluídos.
 Remover do `application/pom.xml` as `<dependency>` de módulos excluídos.
 
 ### 4.4 — Validação Maven
 
-Execute em sequência:
+Execute com um único comando (cobre compile → test → package em sequência interna):
 ```
-mvn clean compile
-mvn test
-mvn package
+mvn clean package
 ```
 
-**Se qualquer comando falhar:**
+Se `mvn` não estiver no PATH, use `./mvnw clean package` (Maven Wrapper) quando o arquivo `mvnw` existir.
+
+**Se o comando falhar:**
 1. Exiba o erro completo ao usuário.
 2. Identifique o arquivo e a linha responsável pelo erro.
 3. Pergunte ao usuário se deve tentar corrigir automaticamente antes de continuar.
