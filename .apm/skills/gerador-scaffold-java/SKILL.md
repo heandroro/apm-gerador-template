@@ -49,6 +49,24 @@ Para otimizar custo de tokens e processamento da LLM:
 
 ---
 
+## Diretriz de Paralelismo
+
+Para minimizar o tempo total de execução, aplique batching de tool calls em operações de I/O:
+
+- **Leituras MCP (Fase 4.1)**: emita TODAS as chamadas `get_file_contents` necessárias em **uma única resposta** como tool calls paralelos. Nunca leia arquivo por arquivo em mensagens separadas.
+- **Escritas de arquivo (Fase 4.3)**: após criar o `pom.xml` raiz, emita TODOS os demais arquivos de módulos em **uma única resposta** como Write tool calls paralelos.
+- **Mapa de tokens (Fase 4.2)**: prepare-o na **mesma resposta** em que emite as leituras MCP — o mapa depende apenas dos dados da Fase 1 e não precisa aguardar as leituras concluírem.
+
+Regra geral: se múltiplas operações não têm dependência entre si, emita-as juntas em uma única resposta.
+
+Para o relatório final (Fase 4.5), mantenha contadores internos durante a execução:
+- `reads_total`: número de chamadas `get_file_contents` emitidas na Fase 4.1
+- `reads_batches`: número de respostas em que essas chamadas foram agrupadas
+- `writes_total`: número de chamadas `Write` emitidas na Fase 4.3
+- `writes_batches`: número de respostas em que essas escritas foram agrupadas
+
+---
+
 ## Pré-requisito: GitHub MCP com GITHUB_TOKEN
 
 **Este skill REQUER GitHub MCP configurado com um `GITHUB_TOKEN` válido.**
@@ -267,16 +285,25 @@ Consulte `./references/module-dependencies.md` apenas para as regras de **format
 
 Execute na seguinte ordem, sem pular etapas:
 
-### 4.1 — Ler arquivos do template via MCP
+### 4.1 — Ler arquivos do template via MCP (paralelo)
+
+Monte a lista completa de arquivos a ler para todos os módulos selecionados usando os caminhos
+do `TEMPLATE-MANIFEST.json`. Em seguida, emita **todas as chamadas `get_file_contents` em uma
+única resposta** como tool calls paralelos — não aguarde o resultado de uma leitura antes de
+emitir a próxima.
 
 Emita todas as chamadas `get_file_contents` dos módulos selecionados **simultaneamente**
 — não sequencialmente. Aguarde todas concluírem antes de iniciar Phase 4.2.
 
 Use os caminhos listados em `TEMPLATE-MANIFEST.json.modules[].manifest` para descobrir
 os arquivos críticos de cada módulo.
+
 Leia **somente os arquivos dos módulos selecionados** — não leia módulos excluídos.
 
-### 4.2 — Preparar mapa de substituição
+### 4.2 — Preparar mapa de substituição (junto com 4.1)
+
+Monte o mapa de tokens na **mesma resposta** em que emite as leituras MCP da Fase 4.1.
+O mapa depende apenas dos dados coletados na Fase 1 — não há dependência das leituras de arquivo.
 
 Monte o mapa de tokens usando `TEMPLATE-MANIFEST.json.replaceTokens[]` (já em contexto).
 
@@ -300,32 +327,31 @@ o contexto — adicione-os ao mapa antes de aplicar substituições.
 Consulte `./references/files-to-adapt.md` para as regras de substituição por **tipo de arquivo**
 (Java, pom.xml, application.yml, docker-compose.yml, etc.).
 
-### 4.3 — Criar estrutura local e materializar arquivos
+### 4.3 — Criar estrutura local e materializar arquivos (paralelo)
 
 1. Criar a estrutura de diretórios no workspace preservando a organização do template.
 2. Para cada arquivo de cada módulo incluído, aplicar as substituições do mapa acima.
 3. Renomear caminhos de pacote Java: `com/mycompany/template/` → caminho derivado de `{NAMESPACE}`.
 4. Filtrar `infra/local/docker-compose.yml`: manter apenas os serviços presentes em `selectedDockerServices[]`.
-5. Ordem de geração: `pom.xml` raiz → `core/` → módulos `infra-*` → `application/`.
-
-Arquivos adicionais a criar:
-- `README.md` adaptado (use `./references/readme-template.md`)
-- `AGENTS.md` com contexto do novo projeto
-- `.gitignore` (copiar do template)
+5. Ordem de geração:
+   - **Passo único**: criar `pom.xml` raiz (inclui apenas `<module>` dos módulos selecionados).
+   - **Em seguida**: emitir TODOS os demais arquivos (`core/`, módulos `infra-*`, `application/`,
+     `README.md`, `AGENTS.md`, `.gitignore`) em **uma única resposta** como Write tool calls
+     paralelos — esses arquivos são independentes entre si.
 
 Remover do `pom.xml` raiz as referências `<module>` de módulos excluídos.
 Remover do `app/application/pom.xml` as `<dependency>` de módulos excluídos.
 
 ### 4.4 — Validação Maven
 
-Execute em sequência:
+Execute com um único comando (cobre compile → test → package em sequência interna):
 ```
-mvn clean compile
-mvn test
-mvn package
+mvn clean package
 ```
 
-**Se qualquer comando falhar:**
+Se `mvn` não estiver no PATH, use `./mvnw clean package` (Maven Wrapper) quando o arquivo `mvnw` existir.
+
+**Se o comando falhar:**
 1. Exiba o erro completo ao usuário.
 2. Identifique o arquivo e a linha responsável pelo erro.
 3. Pergunte ao usuário se deve tentar corrigir automaticamente antes de continuar.
@@ -335,7 +361,18 @@ mvn package
 
 1. Confirme ao usuário que a geração foi concluída localmente.
 2. Liste os caminhos principais dos arquivos gerados.
-3. Sugira (mas não execute) criar um commit e fazer push, pedindo confirmação explícita.
+3. Apresente o relatório de execução usando os contadores mantidos durante a execução:
+
+   **Relatório de execução**
+   | Fase | Operações | Batches paralelos | Equivalente sequencial |
+   |------|-----------|-------------------|------------------------|
+   | 4.1 — Leitura MCP | `{reads_total}` arquivos | `{reads_batches}` batch(es) | `{reads_total}` chamadas |
+   | 4.3 — Geração local | `{writes_total}` arquivos | `{writes_batches}` batch(es) | `{writes_total}` chamadas |
+
+   Operações serializadas evitadas: `{(reads_total - reads_batches) + (writes_total - writes_batches)}`
+   Para custo e tokens da sessão: verifique o comando de uso da sua harness (ex: `/cost` no Claude Code).
+
+4. Sugira (mas não execute) criar um commit e fazer push, pedindo confirmação explícita.
 
 ---
 
