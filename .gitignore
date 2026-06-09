@@ -10,3 +10,4 @@ apm_modules/
 .claude/
 .github/
 apm-gerador-template.code-workspace
+apm.lock.yaml
