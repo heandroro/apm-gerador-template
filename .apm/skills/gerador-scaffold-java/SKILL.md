@@ -57,6 +57,12 @@ Para minimizar o tempo total de execução, aplique batching de tool calls em op
 
 Regra geral: se múltiplas operações não têm dependência entre si, emita-as juntas em uma única resposta.
 
+Para o relatório final (Fase 4.5), mantenha contadores internos durante a execução:
+- `reads_total`: número de chamadas `get_file_contents` emitidas na Fase 4.1
+- `reads_batches`: número de respostas em que essas chamadas foram agrupadas
+- `writes_total`: número de chamadas `Write` emitidas na Fase 4.3
+- `writes_batches`: número de respostas em que essas escritas foram agrupadas
+
 ---
 
 ## Pré-requisito: GitHub MCP com GITHUB_TOKEN
@@ -294,7 +300,18 @@ Se `mvn` não estiver no PATH, use `./mvnw clean package` (Maven Wrapper) quando
 
 1. Confirme ao usuário que a geração foi concluída localmente.
 2. Liste os caminhos principais dos arquivos gerados.
-3. Sugira (mas não execute) criar um commit e fazer push, pedindo confirmação explícita.
+3. Apresente o relatório de execução usando os contadores mantidos durante a execução:
+
+   **Relatório de execução**
+   | Fase | Operações | Batches paralelos | Equivalente sequencial |
+   |------|-----------|-------------------|------------------------|
+   | 4.1 — Leitura MCP | `{reads_total}` arquivos | `{reads_batches}` batch(es) | `{reads_total}` chamadas |
+   | 4.3 — Geração local | `{writes_total}` arquivos | `{writes_batches}` batch(es) | `{writes_total}` chamadas |
+
+   Operações serializadas evitadas: `{(reads_total - reads_batches) + (writes_total - writes_batches)}`
+   Para custo e tokens da sessão: verifique o comando de uso da sua harness (ex: `/cost` no Claude Code).
+
+4. Sugira (mas não execute) criar um commit e fazer push, pedindo confirmação explícita.
 
 ---
 
