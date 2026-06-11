@@ -51,13 +51,13 @@ No manual verification needed — the skill handles it.
 
 ### Option 1 — Skill (auto-activates)
 
-Just describe what you want. The `gerador-scaffold-java` skill activates automatically
+Just describe what you want. The `java-scaffold-generator` skill activates automatically
 when you say things like:
 
-- _"criar projeto Java"_
-- _"novo projeto hexagonal"_
-- _"gerar scaffold para microserviço"_
-- _"criar repositório com arquitetura hexagonal"_
+- _"create Java project"_
+- _"new hexagonal project"_
+- _"scaffold microservice"_
+- _"create hexagonal architecture repository"_
 
 The skill will interview you, present a summary, and then generate all files locally
 in your workspace using the template data read through GitHub MCP.
@@ -69,7 +69,7 @@ No commit or push happens automatically in this flow.
 The prompt template is now bundled as a skill asset at:
 
 ```text
-.apm/skills/gerador-scaffold-java/prompts/new-java-hexagonal-project.prompt.md
+.apm/skills/java-scaffold-generator/prompts/new-java-hexagonal-project.prompt.md
 ```
 
 ## What gets generated

@@ -117,8 +117,8 @@ Official APM reference: [microsoft.github.io/apm](https://microsoft.github.io/ap
 | Variable | Description | Example |
 | --- | --- | --- |
 | `{PROJECT_NAME}` | Artifact ID / project name | `payment-service` |
-| `{PROJECT_DESCRIPTION}` | One-line description | `Serviço de pagamentos PIX` |
-| `{NAMESPACE}` | Maven groupId / base package | `com.minhaempresa.pagamentos` |
+| `{PROJECT_DESCRIPTION}` | One-line description | `PIX payment processing service` |
+| `{NAMESPACE}` | Maven groupId / base package | `com.example.payments` |
 | `{APP_TYPE_LABEL}` | Human label for app type | `API` |
 | `{API_PROTOCOL_LABEL}` | Human label for API protocol | `REST` |
 | `{WORKER_BROKER_LABEL}` | Human label for broker | `Kafka` |
@@ -139,7 +139,7 @@ Official APM reference: [microsoft.github.io/apm](https://microsoft.github.io/ap
 | `{RUN_APPLICATION_COMMAND}` | Command suited to app type | `./mvnw spring-boot:run -pl application` |
 | `{REQUIRED_ENV_VARS_ROWS}` | Markdown rows with required env vars | `| DB_URL | Yes | JDBC URL |` |
 | `{MODULE_DEP_GRAPH}` | Dependency graph for selected modules | `application -> infra-* -> core` |
-| `{NEXT_STEPS_LIST}` | Post-generation checklist | `1. Revisar ...` |
+| `{NEXT_STEPS_LIST}` | Post-generation checklist | `1. Review generated files ...` |
 
 ### Row templates by configuration
 
@@ -167,7 +167,7 @@ Official APM reference: [microsoft.github.io/apm](https://microsoft.github.io/ap
 - If no required variables exist: `| _none_ | No | No required variables for current profile. |`
 
 **`{NEXT_STEPS_LIST}` (suggested default):**
-1. `Revisar os arquivos gerados e ajustes de configuração.`
-2. `Subir infraestrutura local e validar startup.`
-3. `Executar mvn clean compile, mvn test e mvn package.`
-4. `Se tudo estiver ok, considerar commit e push (com confirmação do usuário).`
+1. `Review the generated files and configuration adjustments.`
+2. `Start local infrastructure and validate startup.`
+3. `Run mvn clean compile, mvn test, and mvn package.`
+4. `If everything is OK, consider creating a commit and pushing (with user confirmation).`
