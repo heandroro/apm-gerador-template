@@ -14,23 +14,36 @@ Referência oficial do APM: https://microsoft.github.io/apm/
 
 ---
 
-## Template de Referência
+## Template de Referência (Configurável)
 
+**Padrão**:
 ```
 owner:  heandroro
 repo:   java-hexagonal-template
 branch: main
 ```
 
-Use sempre estes valores nas chamadas `get_file_contents`. Nunca infira owner/repo de outras fontes.
+**Configurável via**:
+- Variáveis de ambiente: `TEMPLATE_OWNER`, `TEMPLATE_REPO`, `TEMPLATE_BRANCH`
+- CLI arguments: `.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh [owner] [repo] [branch]`
 
-Arquivos de entrada obrigatórios — leia **ambos** na Fase 1:
+**Exemplo** (usar outro template):
+```bash
+TEMPLATE_OWNER=myorg TEMPLATE_REPO=my-template TEMPLATE_BRANCH=develop \
+  .apm/skills/gerador-scaffold-java/scripts/fetch-template.sh
+```
+
+Valores são centralizados em `.apm/skills/gerador-scaffold-java/lib/template-config.sh`.
+
+### Arquivos obrigatórios do template
+
 ```
 path: TEMPLATE-MANIFEST.json   → stack, módulos disponíveis, replaceTokens[], naming/mapper rules
 path: GENERATOR.json           → profiles[] pré-configurados e questions[] para entrevista guiada
+path: README.md                → template para novo README
 ```
 
-Leia cada um **uma única vez** na Fase 1 e reutilize o conteúdo em todas as fases seguintes.
+Leia cada um **uma única vez** na Pré-Fase 1 e reutilize o conteúdo em todas as fases seguintes.
 O template é a **fonte da verdade**: módulos, tokens e perguntas vêm dos arquivos acima,
 não de arquivos de referência locais deste gerador.
 Não faça chamadas MCP adicionais sem necessidade explícita.

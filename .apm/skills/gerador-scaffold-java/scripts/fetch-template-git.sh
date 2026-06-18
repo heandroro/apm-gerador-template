@@ -7,18 +7,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-TEMPLATE_REPO_PATH="${PROJECT_ROOT}/template-repo"
-TEMPLATE_REPO_URL="https://github.com/heandroro/java-hexagonal-template.git"
-TEMPLATE_REPO_BRANCH="main"
-CACHE_META="${TEMPLATE_REPO_PATH}/.cache-time"
-MAX_AGE=$((24 * 60 * 60))  # 24 hours in seconds
+# Source template configuration (centralized source of truth)
+source "$SCRIPT_DIR/../lib/template-config.sh"
 
-# Files to fetch from template repo
-FILES=(
-  "TEMPLATE-MANIFEST.json"
-  "GENERATOR.json"
-  "README.md"
-)
+# Local clone path (separate from cache dir, since this is persistent repo)
+TEMPLATE_REPO_PATH="${PROJECT_ROOT}/template-repo"
+TEMPLATE_REPO_URL="${TEMPLATE_REPO_URL:-https://github.com/${TEMPLATE_OWNER}/${TEMPLATE_REPO}.git}"
+TEMPLATE_REPO_BRANCH="${TEMPLATE_BRANCH:-main}"
+CACHE_META="${TEMPLATE_REPO_PATH}/.cache-time"
+MAX_AGE="${TEMPLATE_CACHE_TTL:-$((24 * 60 * 60))}"  # 24 hours in seconds
+
+# Files to fetch from template repo (from template-config.sh)
+FILES=("${TEMPLATE_FILES[@]}")
 
 # Helper: Read file from repo
 read_file_from_repo() {

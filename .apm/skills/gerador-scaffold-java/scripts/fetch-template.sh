@@ -95,24 +95,23 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Cache locations
-FILES_CACHE_DIR="${PROJECT_ROOT}/cache/files"
-mkdir -p "$FILES_CACHE_DIR"
+# Source template configuration (centralized source of truth)
+source "$SCRIPT_DIR/../lib/template-config.sh"
 
-# GitHub template reference
-OWNER="${1:-heandroro}"
-REPO="${2:-java-hexagonal-template}"
-BRANCH="${3:-main}"
+# Override template config with CLI arguments (if provided)
+OWNER="${1:-$TEMPLATE_OWNER}"
+REPO="${2:-$TEMPLATE_REPO}"
+BRANCH="${3:-$TEMPLATE_BRANCH}"
 BATCH_SIZE="${4:-4}"
 REFRESH_CACHE="${5:-false}"
 MAX_RETRIES="${6:-2}"
 
-# Files to fetch (core configuration files + sample modules)
-FILES=(
-  "TEMPLATE-MANIFEST.json"
-  "GENERATOR.json"
-  "README.md"
-)
+# Cache locations
+FILES_CACHE_DIR="${PROJECT_ROOT}/${TEMPLATE_CACHE_DIR}"
+mkdir -p "$FILES_CACHE_DIR"
+
+# Files to fetch (from template-config.sh)
+FILES=("${TEMPLATE_FILES[@]}")
 
 # Check gh CLI is available
 check_gh_cli() {

@@ -178,6 +178,37 @@ Cache is stored locally in the skill directory:
 
 **Same Interface**: Returns identical JSON contract to fetch-template.sh (files + status code)
 
+## Template Configuration (Centralized)
+
+Template repository details are centralized in:
+```
+.apm/skills/gerador-scaffold-java/lib/template-config.sh
+```
+
+**Default values**:
+- `TEMPLATE_OWNER=heandroro`
+- `TEMPLATE_REPO=java-hexagonal-template`
+- `TEMPLATE_BRANCH=main`
+- `TEMPLATE_FILES=(TEMPLATE-MANIFEST.json GENERATOR.json README.md)`
+- `TEMPLATE_CACHE_DIR=.cache/files`
+- `TEMPLATE_CACHE_TTL=$((24 * 60 * 60))` (24 hours)
+
+**Overridable via environment variables** (before running fetch scripts):
+```bash
+export TEMPLATE_OWNER=myorg
+export TEMPLATE_REPO=my-template
+export TEMPLATE_BRANCH=develop
+.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh
+```
+
+**Why centralized?**
+- Single source of truth (resolves coupling #1)
+- Easy to update for multi-template support (future)
+- Consistent values across all scripts (fetch-template.sh, fetch-template-git.sh)
+- Template is fully configurable without code changes
+
+---
+
 ## Skill Development: Key Phases
 
 ### Pré-Fase 1: Fetch Orchestration
