@@ -1,6 +1,94 @@
 #!/bin/bash
-# Orchestrated template fetch using gh CLI
-# Reads multiple files in parallel batches with per-file caching, error tracking, and retry logic
+# Orchestrated template fetch using gh CLI with intelligent retry and per-file caching
+#
+# API Contract:
+#
+#   COMMAND
+#   -------
+#   .apm/scripts/fetch-template.sh [owner] [repo] [branch] [batch_size] [refresh_cache] [max_retries]
+#
+#   PARAMETERS (all optional, defaults shown)
+#   --------
+#   owner         = heandroro
+#   repo          = java-hexagonal-template
+#   branch        = main
+#   batch_size    = 4              (files per parallel batch)
+#   refresh_cache = false          (set true to ignore existing cache)
+#   max_retries   = 2              (exponential backoff: 2^retry seconds)
+#
+#   EXIT STATUS
+#   -----------
+#   0 = Complete success (all files obtained)
+#   1 = Complete failure (no files obtained, gh CLI unavailable or auth failed)
+#   2 = Partial success (some files obtained, some missing)
+#
+#   JSON OUTPUT (stdout)
+#   ----
+#   {
+#     "files": {
+#       "TEMPLATE-MANIFEST.json": "{ ...file content... }",
+#       "GENERATOR.json": "{ ...file content... }",
+#       ...
+#     },
+#     "missing": ["file-C", "file-D"],  // Only present if status = 2
+#     "metadata": {
+#       "source": "gh-cli",
+#       "batches": 4,
+#       "duration": "5s"
+#     },
+#     "status": 0
+#   }
+#
+#   CACHE STRUCTURE
+#   ---------------
+#   .cache/
+#   ├── files/                          // Per-file cache (primary)
+#   │   ├── TEMPLATE-MANIFEST.json      // File content
+#   │   ├── GENERATOR.json              // File content
+#   │   ├── README.md                   // File content
+#   │   ├── file-C.err                  // Error marker (if fetch failed)
+#   │   └── files.meta                  // Timestamp (24h TTL)
+#   └── (legacy: template-files.json.gz, cache.meta — unused after switch to gh-cli)
+#
+#   RETRY LOGIC
+#   -----------
+#   Batch 1: Fetch 4 files in parallel
+#     → Success: save to .cache/files/*.json
+#     → Failure: save error marker to .cache/files/*.err
+#
+#   Auto-retry (if failures detected):
+#     → Sleep 2s (exponential: 2^retry_count seconds)
+#     → Retry ONLY failed files (not successful ones)
+#     → Repeat up to max_retries times
+#
+#   After max_retries exhausted:
+#     → Successful files: in JSON output
+#     → Failed files: listed in "missing" array (status = 2)
+#
+#   FALLBACK
+#   --------
+#   If gh CLI not found or auth fails → Return JSON with status = 1
+#   SKILL.md will detect status = 1 and fallback to GitHub MCP
+#
+#   EFFICIENCY
+#   ----------
+#   • First run: Fetches files via gh CLI (parallel batches)
+#   • Second+ run: Reads from .cache/files/ (24h TTL), ~1ms per file
+#   • Cache hit vs miss: If cached, returns in ~100ms vs ~3-5s for network fetch
+#
+#   Example for SKILL.md:
+#     if [ $exit_status -eq 0 ]; then
+#       # Use all files from JSON
+#       MANIFEST=$(echo "$json" | jq -r '.files["TEMPLATE-MANIFEST.json"]')
+#     elif [ $exit_status -eq 2 ]; then
+#       # Use cached files, fallback MCP for missing
+#       missing=$(echo "$json" | jq -r '.missing[]')
+#       for file in $missing; do
+#         # Call MCP get_file_contents for this file
+#       done
+#     else
+#       # Use MCP for all files
+#     fi
 
 set -euo pipefail
 
