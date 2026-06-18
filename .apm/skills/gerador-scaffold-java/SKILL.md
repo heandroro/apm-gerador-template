@@ -1,6 +1,6 @@
 ---
 name: gerador-scaffold-java
-description: "Use when the user wants to create a new Java project from the hexagonal template (https://github.com/heandroro/java-hexagonal-template). Triggers include: \"criar projeto\", \"novo projeto Java\", \"gerar projeto\", \"scaffolding\", \"criar repositório hexagonal\", \"novo serviço Java\", \"criar microserviço\", or any mention of starting a new Java service based on the hexagonal architecture template. Conducts a structured interview, reads template data via the GitHub MCP, and generates the adapted files locally in the workspace by default. Apply even when the user says only \"quero criar um projeto\" or \"me ajuda a criar um serviço novo\"."
+description: "Use when the user wants to create a new Java project from the hexagonal template (https://github.com/heandroro/java-hexagonal-template). Triggers include: \"criar projeto\", \"novo projeto Java\", \"gerar projeto\", \"scaffolding\", \"criar repositório hexagonal\", \"novo serviço Java\", \"criar microserviço\", or any mention of starting a new Java service based on the hexagonal architecture template. Conducts a structured interview, reads template data via gh CLI (with git clone fallback), and generates the adapted files locally in the workspace by default. Apply even when the user says only \"quero criar um projeto\" or \"me ajuda a criar um serviço novo\"."
 argument-hint: "Opcionalmente informe o nome do projeto, namespace (ex: payment-service, com.minhaempresa.pagamentos), ou `--refresh-cache` para forçar releitura do template mesmo com cache válido."
 ---
 
@@ -53,167 +53,127 @@ Para otimizar custo de tokens e processamento da LLM:
 
 Para minimizar o tempo total de execução, aplique batching de tool calls em operações de I/O:
 
-- **Leituras MCP (Fase 4.1)**: emita TODAS as chamadas `get_file_contents` necessárias em **uma única resposta** como tool calls paralelos. Nunca leia arquivo por arquivo em mensagens separadas.
+- **Fase 4.1 (Leitura de template)**: Reutilize os dados já em contexto da Pré-Fase 1 — **não fazer tool calls**.
+  Os arquivos foram carregados via gh CLI ou git clone, não precisam de chamadas MCP adicionais.
 - **Escritas de arquivo (Fase 4.3)**: após criar o `pom.xml` raiz, emita TODOS os demais arquivos de módulos em **uma única resposta** como Write tool calls paralelos.
-- **Mapa de tokens (Fase 4.2)**: prepare-o na **mesma resposta** em que emite as leituras MCP — o mapa depende apenas dos dados da Fase 1 e não precisa aguardar as leituras concluírem.
+- **Mapa de tokens (Fase 4.2)**: prepare-o imediatamente — o mapa depende apenas dos dados da Fase 1 e não tem dependências externas.
 
 Regra geral: se múltiplas operações não têm dependência entre si, emita-as juntas em uma única resposta.
 
 Para o relatório final (Fase 4.5), mantenha contadores internos durante a execução:
-- `reads_total`: número de chamadas `get_file_contents` emitidas na Fase 4.1
-- `reads_batches`: número de respostas em que essas chamadas foram agrupadas
 - `writes_total`: número de chamadas `Write` emitidas na Fase 4.3
 - `writes_batches`: número de respostas em que essas escritas foram agrupadas
 
 ---
 
-## Pré-requisito: Acesso a Dados do Template (gh CLI ou GitHub MCP)
+## Pré-requisito: Acesso ao Template (gh CLI ou git)
 
-**Este skill REQUER acesso ao template remoto via `gh CLI` (preferido) ou GitHub MCP com `GITHUB_TOKEN`.**
+**Este skill usa um dos dois métodos (em ordem de preferência):**
 
-### Verificação automática: Qual fonte usar?
-
-O skill tenta automaticamente, nesta ordem:
-
-1. **gh CLI** — Se disponível e autenticado (recomendado, mais eficiente em tokens)
+1. **gh CLI** (recomendado) — mais rápido, ~3-5s, ~5K tokens
    - Instalado? `which gh`
    - Autenticado? `gh auth status`
-   - Se OK → executar `.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh` (Pré-Fase 1 Passo 1)
+   - Se não: `brew install gh && gh auth login`
 
-2. **GitHub MCP** — Se gh CLI não estiver disponível (fallback)
-   - Configurado em `settings.json`?
-   - `get_file_contents` disponível?
-   - `GITHUB_TOKEN` válido?
-   - Se OK → executar chamadas MCP padrão (Pré-Fase 1 Passo 3)
+2. **git** (universal fallback) — sempre disponível, ~30-50MB cache local
+   - Comando: `git --version` (já deve estar instalado)
+   - Sem autenticação necessária para repositórios públicos
 
-### Se ambas as fontes falharem
+**Se nenhum estiver disponível**: Erro claro será exibido pedindo instalação.
 
-**Erro esperado:** O script retorna `status: 1` ou MCP retorna erro de autenticação.
+### Segurança
 
-**Mensagem ao usuário (opção A: gh CLI indisponível):**
-```
-⚠️ gh CLI não está disponível e GitHub MCP não está configurado.
+Este fluxo é **somente leitura remota** do template público.
 
-Para continuar, escolha uma opção:
-
-1️⃣ Instalar gh CLI (recomendado):
-   - macOS: brew install gh
-   - Linux: https://github.com/cli/cli/releases
-   - Windows: https://github.com/cli/cli/releases
-   - Autenticar: gh auth login
-
-2️⃣ Ou configurar GitHub MCP em settings.json:
-   - Gere um token em: https://github.com/settings/tokens
-   - Adicione a mcpServers.github em settings.json com GITHUB_TOKEN
-   - Reinicie Claude Code
-
-Tente novamente após escolher uma opção.
-```
-
-**Mensagem ao usuário (opção B: gh CLI presente, mas sem autenticação):**
-```
-⚠️ gh CLI instalado, mas não autenticado.
-
-Solução:
-gh auth login
-
-Escolha: GitHub.com → SSH/HTTPS → Autorizar via browser
-
-Tente novamente após autenticar.
-```
-
-**Mensagem ao usuário (opção C: MCP presente, mas token inválido):**
-```
-⚠️ GitHub MCP está configurado, mas GITHUB_TOKEN é inválido ou expirou.
-
-Solução:
-1. Gere um novo token: https://github.com/settings/tokens
-   - Escopo mínimo: public_repo (read-only)
-2. Atualize GITHUB_TOKEN em settings.json
-3. Reinicie Claude Code
-
-Tente novamente após atualizar.
-```
-
-### Regra de segurança obrigatória (GitHub MCP)
-
-Este fluxo é **somente leitura remota**.
-
-- ✅ Permitido: ler arquivos do template via `get_file_contents`.
-- ❌ Proibido: qualquer escrita no repositório do template (`create`, `update`, `delete`, `push`, commits, PRs).
-- ❌ Se ferramentas de escrita estiverem disponíveis, NÃO usar durante este skill.
-- ✅ Geração acontece apenas no workspace local do usuário.
+- ✅ Permitido: ler arquivos do template via gh CLI ou git clone
+- ❌ Proibido: fazer push/commits, modificar template, usar MCP para escrita
+- ✅ Geração acontece apenas no workspace local do usuário
 
 ---
 
-## Pré-Fase 1 — Orquestração de Fetch (gh CLI ou MCP Fallback)
+---
 
-Antes de fazer qualquer chamada MCP, tente usar o script shell otimizado que implementa:
-- Caching por arquivo (não monolítico)
-- Auto-retry para arquivos que falharem
-- Status codes (0=sucesso completo, 1=falha total, 2=sucesso parcial com fallback MCP)
+## Fluxo de Dados: Pré-Fase 1 → Fase 4
 
-### Passo 1: Executar script de fetch orquestrado (se disponível)
+**Premissa importante**: Fase 4 **NÃO precisa de MCP**, pois todos os dados necessários foram
+carregados na Pré-Fase 1 via gh CLI ou git clone.
 
-Tente executar:
+```
+Pré-Fase 1: Fetch via gh CLI (ou git clone fallback)
+    ↓
+    Obtém 3 arquivos:
+    • TEMPLATE-MANIFEST.json → metadados de módulos e tokens
+    • GENERATOR.json → perguntas para entrevista
+    • README.md → template para novo README
+    ↓
+    Cache local (.apm/skills/.../cache/files/)
+    
+Fase 1-3: Entrevista & decisões (apenas manipulação de dados já em contexto)
+    ↓
+Fase 4: Geração local (reutiliza os 3 arquivos da Pré-Fase 1, **sem chamadas MCP**)
+    ↓
+    Gera arquivos adaptados no workspace local
+```
+
+**Benefício**: Sem dependência de MCP em tempo de execução (Fase 4), apenas em Pré-Fase 1.
+**Implicação**: Se gh CLI estiver disponível, todo o skill roda com ~5K tokens (vs ~150K com MCP).
+
+---
+
+## Pré-Fase 1 — Orquestração de Fetch (gh CLI com git clone Fallback)
+
+O script shell otimizado tenta automaticamente, em ordem:
+
+1. **gh CLI** (primário) — rápido, eficiente em tokens
+2. **git clone** (fallback) — universal, sempre disponível
+
+Script que orquestra isso:
 ```bash
 .apm/skills/gerador-scaffold-java/scripts/fetch-template.sh [owner] [repo] [branch] [batch_size] [refresh_cache]
 ```
 
-**Exemplos:**
+### Execução automática
+
+Quando o usuário diz algo como "criar projeto Java", o script é executado automaticamente:
 ```bash
-.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh                    # Padrões: heandroro, java-hexagonal-template, main
-.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh heandroro java-hexagonal-template main 4 true  # Force refresh
+.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh heandroro java-hexagonal-template main 4 false
 ```
 
-**Resultado esperado:** JSON com `status` e `files`:
+**Resultado esperado**: JSON com `status` e `files`:
 ```json
 {
   "files": {
     "TEMPLATE-MANIFEST.json": "{ ...content... }",
     "GENERATOR.json": "{ ...content... }",
-    "README.md": "# Template...",
-    ...
+    "README.md": "# Template..."
   },
-  "missing": ["file-xyz"],  // Only if status = 2
   "metadata": {
     "source": "gh-cli",
-    "batches": 1,
     "duration": "3s"
   },
   "status": 0
 }
 ```
 
-### Passo 2: Interpretar status code
+### Interpretar status code
 
 | Status | Significado | Ação |
 |--------|------------|------|
-| **0** | Sucesso completo (todos os 3 arquivos obrigatórios obtidos) | Prosseguir com Fase 1 usando os dados |
-| **1** | Falha total (nenhum arquivo obtido, gh CLI indisponível ou sem autenticação) | Fallback para Pré-Requisito (verificação MCP abaixo) |
-| **2** | Sucesso parcial (alguns arquivos obtidos, outros falharam) | Usar os obtidos + MCP para os faltando (veja Passo 3) |
+| **0** | Sucesso (todos 3 arquivos obtidos via gh CLI) | Prosseguir com Fase 1 com os dados |
+| **1** | Falha (gh CLI indisponível, fallback para git clone já executado automaticamente) | Continuar com dados do git clone (também retorna status 0 se bem-sucedido) |
 
-### Passo 3: Fallback para MCP (se status 1 ou 2)
+**Nota**: O script trata o fallback internamente. Se gh CLI falhar, ele chama `fetch-template-git.sh` automaticamente.
+Você recebe os mesmos 3 arquivos, apenas a origem muda (gh-cli vs git clone).
 
-**Se status = 1 (falha total):**
-- Script não conseguiu usar gh CLI (não instalado, sem autenticação, etc.)
-- Executar procedimento de Pré-requisito (verificação MCP) definido abaixo
-- Fazer chamadas MCP padrão para TEMPLATE-MANIFEST.json, GENERATOR.json, README.md
+### Após receber os dados
 
-**Se status = 2 (sucesso parcial):**
-- Script obteve alguns arquivos (em `files`)
-- Fazer chamadas MCP APENAS para os arquivos em `missing[]`
-- Mesclar resultado MCP com dados já obtidos do script
-- Informar ao usuário: `[fetch] Alguns arquivos obtidos via gh CLI, complementando com MCP para os faltando...`
+Independentemente da fonte (gh CLI ou git clone), você tem em contexto:
+- `TEMPLATE-MANIFEST.json` — metadados de módulos
+- `GENERATOR.json` — perguntas de entrevista
+- `README.md` — template README
 
-### Passo 4: Serializar cache após obter todos os dados
-
-Independentemente da origem (gh-cli ou MCP), após ter todos os 3 arquivos obrigatórios,
-salvar em `.apm/skills/gerador-scaffold-java/cache/files/` (estrutura de per-file cache mantida pelo script).
-
-Informar ao usuário:
-- Se usado gh-cli: `[cache] Template data via gh CLI (batch fetch em {duration})`
-- Se complementado MCP: `[cache] Template data: {files_from_cli} via gh CLI + {files_from_mcp} via MCP`
+Estes dados **permanecem em contexto para todo o resto do skill** (Fases 1-4).
+**Sem chamadas MCP adicionais necessárias.**
 
 ---
 
@@ -334,20 +294,27 @@ Consulte `./references/module-dependencies.md` apenas para as regras de **format
 
 Execute na seguinte ordem, sem pular etapas:
 
-### 4.1 — Ler arquivos do template via MCP (paralelo)
+### 4.1 — Ler arquivos do template (já em cache local da Pré-Fase 1)
 
-Monte a lista completa de arquivos a ler para todos os módulos selecionados usando os caminhos
-do `TEMPLATE-MANIFEST.json`. Em seguida, emita **todas as chamadas `get_file_contents` em uma
-única resposta** como tool calls paralelos — não aguarde o resultado de uma leitura antes de
-emitir a próxima.
+**IMPORTANTE**: Os arquivos do template **já foram carregados na Pré-Fase 1** via gh CLI ou git clone fallback.
+**Não fazer chamadas MCP adicionais** — reutilizar os dados já em contexto.
 
-Emita todas as chamadas `get_file_contents` dos módulos selecionados **simultaneamente**
-— não sequencialmente. Aguarde todas concluírem antes de iniciar Phase 4.2.
+#### Revisão dos dados em contexto (Pré-Fase 1)
+
+Você já tem em contexto os 3 arquivos de configuração carregados na Pré-Fase 1:
+- `TEMPLATE-MANIFEST.json` — lista completa de módulos e seus arquivos
+- `GENERATOR.json` — perguntas de entrevista
+- `README.md` — template README
+
+Monte a lista de arquivos a gerar para todos os módulos selecionados usando os caminhos
+do `TEMPLATE-MANIFEST.json.modules[].manifest[]`. 
 
 Use os caminhos listados em `TEMPLATE-MANIFEST.json.modules[].manifest` para descobrir
 os arquivos críticos de cada módulo.
 
 Leia **somente os arquivos dos módulos selecionados** — não leia módulos excluídos.
+
+**Próximo passo**: Fase 4.2 (mapa de tokens). Não há tool calls nesta subetapa — apenas análise de dados já em contexto.
 
 ### 4.2 — Preparar mapa de substituição (junto com 4.1)
 
@@ -413,12 +380,12 @@ Se `mvn` não estiver no PATH, use `./mvnw clean package` (Maven Wrapper) quando
 3. Apresente o relatório de execução usando os contadores mantidos durante a execução:
 
    **Relatório de execução**
-   | Fase | Operações | Batches paralelos | Equivalente sequencial |
-   |------|-----------|-------------------|------------------------|
-   | 4.1 — Leitura MCP | `{reads_total}` arquivos | `{reads_batches}` batch(es) | `{reads_total}` chamadas |
-   | 4.3 — Geração local | `{writes_total}` arquivos | `{writes_batches}` batch(es) | `{writes_total}` chamadas |
+   | Fase | Operações | Batches paralelos | Nota |
+   |------|-----------|-------------------|------|
+   | Pré-Fase 1 — Fetch (gh CLI/git) | 3 arquivos | 1 | Executado automaticamente (fora desta skill) |
+   | 4.3 — Geração local | `{writes_total}` arquivos | `{writes_batches}` batch(es) | Tool calls Write em paralelo |
 
-   Operações serializadas evitadas: `{(reads_total - reads_batches) + (writes_total - writes_batches)}`
+   Operações serializadas evitadas: `{writes_total - writes_batches}`
    Para custo e tokens da sessão: verifique o comando de uso da sua harness (ex: `/cost` no Claude Code).
 
 4. Sugira (mas não execute) criar um commit e fazer push, pedindo confirmação explícita.

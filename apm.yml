@@ -8,16 +8,8 @@ license: MIT
 type: hybrid
 includes: auto
 
-# Package-level dependencies (Optional — fallback if gh CLI not available)
-dependencies:
-  mcp:
-    # GitHub MCP server — Optional fallback for advanced GitHub integration
-    - name: io.github.github/github-mcp-server
-      tools:
-        - get_file_contents  # Advanced: read additional files if needed
-      env:
-        GITHUB_TOKEN: ${GITHUB_TOKEN}  # Optional, only needed for MCP usage
-      required: false
+# Package-level dependencies (None required — skill uses gh CLI and git clone)
+dependencies: {}
 
 # Explicit skill references
 skills:

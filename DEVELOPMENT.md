@@ -219,13 +219,51 @@ Cache is stored locally in the skill directory:
 **Entry Point**: SKILL.md Fase 4 section (4.1 to 4.5 substeps).
 
 **Key Sub-steps**:
-- 4.1: Read module files via MCP
+- 4.1: Reutilize template files already in context from Pré-Fase 1 (no MCP calls)
 - 4.2: Build token substitution map
 - 4.3: Generate files (parallel Write calls)
 - 4.4: Validate Maven
 - 4.5: Report execution metrics
 
+**Important**: Phase 4 does NOT require MCP — all template data (TEMPLATE-MANIFEST.json, GENERATOR.json) was already fetched in Pré-Fase 1 via gh CLI or git clone. Simply reuse those cached/in-context values.
+
 **Maintenance**: Update token map if new tokens added to template. Update file paths if template structure changes.
+
+## Critical Clarification: Phase 4 Does NOT Require MCP
+
+### Why Phase 4 is independent from MCP
+
+**Phase 4 generation does NOT make any MCP calls** — it only consumes template data that was already fetched in Pré-Fase 1.
+
+**Data Flow**:
+```
+Pré-Fase 1: fetch-template.sh (gh CLI) or fetch-template-git.sh (git clone)
+    ↓
+    Returns JSON with 3 files (in context):
+    • TEMPLATE-MANIFEST.json
+    • GENERATOR.json  
+    • README.md
+    ↓
+Phase 4: LLM reutilizes these 3 files from context
+    • No additional network calls needed
+    • No MCP required at execution time
+    • Skill is fully self-contained after Pré-Fase 1
+```
+
+**Implication for users**:
+- If gh CLI is available: entire skill runs with ~5K tokens (just metadata, no MCP)
+- If gh CLI unavailable: falls back to git clone (still no MCP needed)
+- MCP is optional fallback in apm.yml, not required
+
+### Why this matters for maintenance
+
+If you add new token types or modules to the template:
+1. Update `TEMPLATE-MANIFEST.json.replaceTokens[]` in the template repo (heandroro/java-hexagonal-template)
+2. Update `SKILL.md` table at "4.2 — Token substitution map" with new tokens
+3. Update `./references/files-to-adapt.md` with new file types or rules
+4. **Do NOT add new MCP calls to Phase 4** — the template data is already in context
+
+---
 
 ## Token Substitution
 
