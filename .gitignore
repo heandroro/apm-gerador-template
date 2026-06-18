@@ -12,5 +12,6 @@ apm_modules/
 apm-gerador-template.code-workspace
 apm.lock.yaml
 
-# Template cache
+# Template cache and local git clone
 .apm/skills/gerador-scaffold-java/cache/
+.apm/skills/gerador-scaffold-java/template-repo/
