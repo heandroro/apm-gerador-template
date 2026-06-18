@@ -20,9 +20,12 @@ All generation happens locally in the user's workspace — no commits or pushes 
 
 | Path | Purpose | Maintainer Notes |
 |------|---------|------------------|
-| `.apm/skills/gerador-scaffold-java/SKILL.md` | Main skill instruction for LLM | Update when Pré-Phase 1 or any phase logic changes |
-| `.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh` | Orchestrates parallel GitHub API calls for template fetching | Core I/O logic; careful with path changes |
-| `.apm/skills/gerador-scaffold-java/scripts/lib/cache.sh` | Per-file cache with 24h TTL | Shared by fetch-template.sh; affects all runs |
+| `apm.yml` (root) | Skill registration for APM package manager | Update only skill metadata (name, description). Template config is in lib/template-config.sh |
+| `.apm/skills/gerador-scaffold-java/SKILL.md` | Main skill instruction for LLM | Update when Pré-Phase 1 or any phase logic changes. References template-config.sh for actual values |
+| `.apm/skills/gerador-scaffold-java/lib/template-config.sh` | **Centralized template configuration** | **Single source of truth** for TEMPLATE_OWNER, TEMPLATE_REPO, TEMPLATE_BRANCH |
+| `.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh` | Orchestrates parallel GitHub API calls for template fetching | Core I/O logic; sources lib/template-config.sh |
+| `.apm/skills/gerador-scaffold-java/scripts/fetch-template-git.sh` | Git clone fallback for template fetching | Sources lib/template-config.sh; uses optimized shallow clone |
+| `.apm/skills/gerador-scaffold-java/scripts/lib/cache.sh` | Per-file cache with 24h TTL | Sources lib/template-config.sh for centralized paths; shared by both fetch scripts |
 | `.apm/skills/gerador-scaffold-java/references/files-to-adapt.md` | Token substitution rules by file type | Update when new token types added to template |
 | `.apm/skills/gerador-scaffold-java/prompts/new-java-hexagonal-project.prompt.md` | Interview questions and flow | Update when adding new user questions |
 | `.apm/skills/gerador-scaffold-java/references/module-dependencies.md` | Maven dependency rules (pom.xml format) | Update when template modules change |
@@ -213,6 +216,39 @@ Cache is stored locally in the skill directory:
 - Incremental updates via `git pull --ff-only` (only new changes)
 
 **Same Interface**: Returns identical JSON contract to fetch-template.sh (files + status code)
+
+## Configuration Architecture: apm.yml vs lib/template-config.sh
+
+**Key principle**: Clear separation of concerns between package metadata and technical configuration.
+
+| File | Purpose | Who maintains | Scope |
+|------|---------|---------------|-------|
+| `apm.yml` | APM package registration and metadata | Package author (heandroro) | High-level skill discovery |
+| `lib/template-config.sh` | **Technical config for scripts** | Skill maintainer | Template owner/repo/branch/cache paths |
+
+**apm.yml responsibility** (read-only for templates):
+- Skill name: `gerador-scaffold-java`
+- Description: "Use when user wants to create Java project..."
+- Dependencies: None (MCP was removed in coupling fix #6)
+
+**lib/template-config.sh responsibility** (the actual template):
+- Which template: `heandroro/java-hexagonal-template`
+- Cache location and TTL
+- Files to fetch
+- Environment variable overrides
+
+**Why separate?**
+- apm.yml is about "what skill exists and when to trigger it"
+- lib/template-config.sh is about "how this skill technically works"
+- Allows skill to be reused with different templates (future)
+- Makes template changes isolated from package metadata
+
+**If you change the template**:
+- Only update `lib/template-config.sh` (TEMPLATE_OWNER, TEMPLATE_REPO, TEMPLATE_BRANCH)
+- No changes needed to apm.yml (skill name stays same)
+- All scripts automatically pick up new config via `source lib/template-config.sh`
+
+---
 
 ## Template Configuration (Centralized)
 
