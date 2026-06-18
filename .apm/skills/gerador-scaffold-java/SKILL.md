@@ -67,65 +67,73 @@ Para o relatório final (Fase 4.5), mantenha contadores internos durante a execu
 
 ---
 
-## Pré-requisito: GitHub MCP com GITHUB_TOKEN
+## Pré-requisito: Acesso a Dados do Template (gh CLI ou GitHub MCP)
 
-**Este skill REQUER GitHub MCP configurado com um `GITHUB_TOKEN` válido.**
+**Este skill REQUER acesso ao template remoto via `gh CLI` (preferido) ou GitHub MCP com `GITHUB_TOKEN`.**
 
-### Verificação automática em tempo de execução
+### Verificação automática: Qual fonte usar?
 
-**Antes de iniciar**, execute este procedimento de detecção:
+O skill tenta automaticamente, nesta ordem:
 
-1. **Tente chamar `get_file_contents`** como teste:
-   ```
-   owner: heandroro
-   repo: java-hexagonal-template
-   path: TEMPLATE-MANIFEST.json
-   ```
+1. **gh CLI** — Se disponível e autenticado (recomendado, mais eficiente em tokens)
+   - Instalado? `which gh`
+   - Autenticado? `gh auth status`
+   - Se OK → executar `.apm/scripts/fetch-template.sh` (Pré-Fase 1 Passo 1)
 
-   **Resultado esperado:** sucesso → MCP está pronto, prossiga para Fase 1.
+2. **GitHub MCP** — Se gh CLI não estiver disponível (fallback)
+   - Configurado em `settings.json`?
+   - `get_file_contents` disponível?
+   - `GITHUB_TOKEN` válido?
+   - Se OK → executar chamadas MCP padrão (Pré-Fase 1 Passo 3)
 
-2. **Se a chamada falhar**, diagnostique o motivo:
+### Se ambas as fontes falharem
 
-   **Caso A: Erro de autenticação / token inválido**
-   - **Mensagem ao usuário:**
-     ```
-     ❌ GitHub MCP retornou erro de autenticação.
-     
-     Solução:
-     1. Verifique se GITHUB_TOKEN está configurado em settings.json
-     2. Confirme que o token tem acesso ao repositório heandroro/java-hexagonal-template
-     3. Tokens podem expirar — gere um novo em: https://github.com/settings/tokens
-     
-     Após atualizar, tente novamente.
-     ```
+**Erro esperado:** O script retorna `status: 1` ou MCP retorna erro de autenticação.
 
-   **Caso B: MCP não está ativo / ferramentas não disponíveis**
-   - **Mensagem ao usuário:**
-     ```
-     ❌ GitHub MCP não está ativo ou acessível.
-     
-     Solução:
-     1. Confirme que GitHub MCP está configurado em settings.json com GITHUB_TOKEN
-     2. Restart Claude Code após configurar
-     3. Consulte: https://github.com/modelcontextprotocol/servers/tree/main/src/github
-     
-     Após configurar e reiniciar, tente novamente.
-     ```
+**Mensagem ao usuário (opção A: gh CLI indisponível):**
+```
+⚠️ gh CLI não está disponível e GitHub MCP não está configurado.
 
-   **Caso C: Outro erro (network, não consegue resolver hostname, etc)**
-   - **Mensagem ao usuário:**
-     ```
-     ❌ Não consegui conectar ao GitHub para ler o template.
-     
-     Erro: [erro específico]
-     
-     Verificações:
-     1. Conexão com internet está ativa?
-     2. GitHub está acessível?
-     3. Firewall/proxy está bloqueando?
-     
-     Tente novamente em alguns instantes.
-     ```
+Para continuar, escolha uma opção:
+
+1️⃣ Instalar gh CLI (recomendado):
+   - macOS: brew install gh
+   - Linux: https://github.com/cli/cli/releases
+   - Windows: https://github.com/cli/cli/releases
+   - Autenticar: gh auth login
+
+2️⃣ Ou configurar GitHub MCP em settings.json:
+   - Gere um token em: https://github.com/settings/tokens
+   - Adicione a mcpServers.github em settings.json com GITHUB_TOKEN
+   - Reinicie Claude Code
+
+Tente novamente após escolher uma opção.
+```
+
+**Mensagem ao usuário (opção B: gh CLI presente, mas sem autenticação):**
+```
+⚠️ gh CLI instalado, mas não autenticado.
+
+Solução:
+gh auth login
+
+Escolha: GitHub.com → SSH/HTTPS → Autorizar via browser
+
+Tente novamente após autenticar.
+```
+
+**Mensagem ao usuário (opção C: MCP presente, mas token inválido):**
+```
+⚠️ GitHub MCP está configurado, mas GITHUB_TOKEN é inválido ou expirou.
+
+Solução:
+1. Gere um novo token: https://github.com/settings/tokens
+   - Escopo mínimo: public_repo (read-only)
+2. Atualize GITHUB_TOKEN em settings.json
+3. Reinicie Claude Code
+
+Tente novamente após atualizar.
+```
 
 ### Regra de segurança obrigatória (GitHub MCP)
 
@@ -138,33 +146,74 @@ Este fluxo é **somente leitura remota**.
 
 ---
 
-## Pré-Fase 1 — Verificação de Cache Local
+## Pré-Fase 1 — Orquestração de Fetch (gh CLI ou MCP Fallback)
 
-Antes de fazer qualquer chamada MCP, verifique se existe um cache local válido.
+Antes de fazer qualquer chamada MCP, tente usar o script shell otimizado que implementa:
+- Caching por arquivo (não monolítico)
+- Auto-retry para arquivos que falharem
+- Status codes (0=sucesso completo, 1=falha total, 2=sucesso parcial com fallback MCP)
 
-**Localização do cache:** `.apm/skills/gerador-scaffold-java/cache/template-config.json`
+### Passo 1: Executar script de fetch orquestrado (se disponível)
 
-**Estrutura esperada:**
+Tente executar:
+```bash
+.apm/scripts/fetch-template.sh [owner] [repo] [branch] [batch_size] [refresh_cache]
+```
+
+**Exemplos:**
+```bash
+.apm/scripts/fetch-template.sh                    # Padrões: heandroro, java-hexagonal-template, main
+.apm/scripts/fetch-template.sh heandroro java-hexagonal-template main 4 true  # Force refresh
+```
+
+**Resultado esperado:** JSON com `status` e `files`:
 ```json
 {
-  "cachedAt": "2026-06-06T14:30:00Z",
-  "templateVersion": "string",
-  "manifest": { ...conteúdo de TEMPLATE-MANIFEST.json... },
-  "generator": { ...conteúdo de GENERATOR.json... }
+  "files": {
+    "TEMPLATE-MANIFEST.json": "{ ...content... }",
+    "GENERATOR.json": "{ ...content... }",
+    "README.md": "# Template...",
+    ...
+  },
+  "missing": ["file-xyz"],  // Only if status = 2
+  "metadata": {
+    "source": "gh-cli",
+    "batches": 1,
+    "duration": "3s"
+  },
+  "status": 0
 }
 ```
 
-**Lógica de decisão:**
+### Passo 2: Interpretar status code
 
-1. Verificar se o argumento `--refresh-cache` foi passado → se sim, pular para passo 3.
-2. Tentar ler o arquivo de cache local:
-   - Se existir e `cachedAt` for há menos de 24 horas → usar cache, pular chamadas MCP de configuração.
-     Informar ao usuário: `[cache] Usando configuração do template em cache (atualizado em {cachedAt}).`
-   - Se ausente ou `cachedAt` ≥ 24h atrás → prosseguir para passo 3.
-3. Buscar via MCP (chamadas descritas na Fase 1 abaixo).
-4. Após busca bem-sucedida, serializar o resultado em `.apm/skills/gerador-scaffold-java/cache/template-config.json`
-   com `cachedAt` = timestamp ISO atual e `templateVersion` = valor de `TEMPLATE-MANIFEST.json.version`.
-   Informar ao usuário: `[cache] Configuração do template atualizada.`
+| Status | Significado | Ação |
+|--------|------------|------|
+| **0** | Sucesso completo (todos os 3 arquivos obrigatórios obtidos) | Prosseguir com Fase 1 usando os dados |
+| **1** | Falha total (nenhum arquivo obtido, gh CLI indisponível ou sem autenticação) | Fallback para Pré-Requisito (verificação MCP abaixo) |
+| **2** | Sucesso parcial (alguns arquivos obtidos, outros falharam) | Usar os obtidos + MCP para os faltando (veja Passo 3) |
+
+### Passo 3: Fallback para MCP (se status 1 ou 2)
+
+**Se status = 1 (falha total):**
+- Script não conseguiu usar gh CLI (não instalado, sem autenticação, etc.)
+- Executar procedimento de Pré-requisito (verificação MCP) definido abaixo
+- Fazer chamadas MCP padrão para TEMPLATE-MANIFEST.json, GENERATOR.json, README.md
+
+**Se status = 2 (sucesso parcial):**
+- Script obteve alguns arquivos (em `files`)
+- Fazer chamadas MCP APENAS para os arquivos em `missing[]`
+- Mesclar resultado MCP com dados já obtidos do script
+- Informar ao usuário: `[fetch] Alguns arquivos obtidos via gh CLI, complementando com MCP para os faltando...`
+
+### Passo 4: Serializar cache após obter todos os dados
+
+Independentemente da origem (gh-cli ou MCP), após ter todos os 3 arquivos obrigatórios,
+salvar em `.apm/scripts/.cache/files/` (estrutura de per-file cache mantida pelo script).
+
+Informar ao usuário:
+- Se usado gh-cli: `[cache] Template data via gh CLI (batch fetch em {duration})`
+- Se complementado MCP: `[cache] Template data: {files_from_cli} via gh CLI + {files_from_mcp} via MCP`
 
 ---
 
