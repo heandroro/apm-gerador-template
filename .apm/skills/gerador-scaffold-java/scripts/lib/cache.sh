@@ -1,21 +1,30 @@
 #!/bin/bash
 # Cache utilities for template data
-# Provides functions for 24-hour local caching of GitHub template files (per-file and monolithic)
+# Provides functions for 24-hour local caching of GitHub template files (per-file)
+#
+# IMPORTANT: This file sources template-config.sh to get centralized cache paths
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-CACHE_DIR="${PROJECT_ROOT}/cache"
-FILES_CACHE_DIR="${CACHE_DIR}/files"
+
+# Source template configuration for centralized cache paths
+source "$SCRIPT_DIR/template-config.sh"
+
+# Derive full cache paths from template-config.sh settings
+CACHE_DIR="${PROJECT_ROOT}/${TEMPLATE_CACHE_DIR%/*}"  # Remove /files suffix
+FILES_CACHE_DIR="${PROJECT_ROOT}/${TEMPLATE_CACHE_DIR}"  # e.g. .apm/skills/.../cache/files
+FILES_CACHE_META="${PROJECT_ROOT}/${TEMPLATE_CACHE_META}"  # e.g. .apm/skills/.../cache/files/files.meta
+
+# Legacy monolithic cache (no longer used, kept for cleanup)
 CACHE_FILE="${CACHE_DIR}/template-files.json.gz"
 CACHE_META="${CACHE_DIR}/cache.meta"
-FILES_CACHE_META="${CACHE_DIR}/files.meta"
 
 # Create cache directories
 mkdir -p "$CACHE_DIR" "$FILES_CACHE_DIR"
 
-# Check if monolithic cache exists and is valid (< 24 hours)
+# Check if monolithic cache exists and is valid (LEGACY — no longer used)
 cache_is_valid() {
   if [[ ! -f "$CACHE_META" ]]; then
     return 1
@@ -24,12 +33,12 @@ cache_is_valid() {
   local cached_time=$(cat "$CACHE_META" 2>/dev/null || echo "0")
   local current_time=$(date +%s)
   local age=$((current_time - cached_time))
-  local max_age=$((24 * 60 * 60))  # 24 hours in seconds
+  local max_age="${TEMPLATE_CACHE_TTL:-$((24 * 60 * 60))}"  # From template-config.sh
 
   [[ $age -lt $max_age ]]
 }
 
-# Check if per-file cache exists and is valid
+# Check if per-file cache exists and is valid (uses TEMPLATE_CACHE_TTL from template-config.sh)
 files_cache_is_valid() {
   if [[ ! -f "$FILES_CACHE_META" ]]; then
     return 1
@@ -38,7 +47,7 @@ files_cache_is_valid() {
   local cached_time=$(cat "$FILES_CACHE_META" 2>/dev/null || echo "0")
   local current_time=$(date +%s)
   local age=$((current_time - cached_time))
-  local max_age=$((24 * 60 * 60))
+  local max_age="${TEMPLATE_CACHE_TTL:-$((24 * 60 * 60))}"  # Default to 24h if not set
 
   [[ $age -lt $max_age ]]
 }
@@ -77,13 +86,13 @@ files_cache_mark_valid() {
   echo "[cache] Per-file cache marked valid" >&2
 }
 
-# Clean expired monolithic cache
+# Clean expired monolithic cache (LEGACY — no longer used)
 cache_clean() {
   if [[ -f "$CACHE_META" ]]; then
     local cached_time=$(cat "$CACHE_META")
     local current_time=$(date +%s)
     local age=$((current_time - cached_time))
-    local max_age=$((24 * 60 * 60))
+    local max_age="${TEMPLATE_CACHE_TTL:-$((24 * 60 * 60))}"  # From template-config.sh
 
     if [[ $age -ge $max_age ]]; then
       rm -f "$CACHE_FILE" "$CACHE_META"
@@ -95,13 +104,13 @@ cache_clean() {
   return 1
 }
 
-# Clean expired per-file cache
+# Clean expired per-file cache (uses TEMPLATE_CACHE_TTL from template-config.sh)
 files_cache_clean() {
   if [[ -f "$FILES_CACHE_META" ]]; then
     local cached_time=$(cat "$FILES_CACHE_META")
     local current_time=$(date +%s)
     local age=$((current_time - cached_time))
-    local max_age=$((24 * 60 * 60))
+    local max_age="${TEMPLATE_CACHE_TTL:-$((24 * 60 * 60))}"  # Default to 24h if not set
 
     if [[ $age -ge $max_age ]]; then
       rm -f "$FILES_CACHE_DIR"/*.json "$FILES_CACHE_DIR"/*.err "$FILES_CACHE_META"
