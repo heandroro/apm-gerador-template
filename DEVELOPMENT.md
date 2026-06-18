@@ -286,10 +286,10 @@ export TEMPLATE_BRANCH=develop
 **Current structure** (documented in SKILL.md and scripts):
 ```
 .apm/skills/gerador-scaffold-java/
-├── lib/
-│   ├── template-config.sh      # Centralized config
-│   └── cache.sh                # Cache utilities
 ├── scripts/
+│   ├── lib/
+│   │   ├── template-config.sh  # Centralized config
+│   │   └── cache.sh            # Cache utilities
 │   ├── fetch-template.sh       # Primary: gh CLI fetch
 │   └── fetch-template-git.sh   # Fallback: git clone
 ├── SKILL.md                    # LLM instructions (references scripts/)

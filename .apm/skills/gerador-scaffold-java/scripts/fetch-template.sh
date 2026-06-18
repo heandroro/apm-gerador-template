@@ -96,7 +96,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Source template configuration (centralized source of truth)
-source "$SCRIPT_DIR/../lib/template-config.sh"
+source "$SCRIPT_DIR/lib/template-config.sh"
 
 # Override template config with CLI arguments (if provided)
 OWNER="${1:-$TEMPLATE_OWNER}"
