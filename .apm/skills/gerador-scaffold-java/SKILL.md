@@ -72,8 +72,8 @@ Para otimizar custo de tokens e processamento da LLM:
 
 Para minimizar o tempo total de execução, aplique batching de tool calls em operações de I/O:
 
-- **Fase 4.1 (Leitura de template)**: Reutilize os dados já em contexto da Pré-Fase 1 — **não fazer tool calls**.
-  Os arquivos foram carregados via gh CLI ou git clone, não precisam de chamadas MCP adicionais.
+- **Fase 4.1 (Leitura de template)**: Reutilize os dados já em contexto da Pré-Fase 1 — **não fazer novas chamadas de fetch**.
+  Os 3 arquivos já foram carregados (via MCP, gh CLI ou git clone).
 - **Escritas de arquivo (Fase 4.3)**: após criar o `pom.xml` agregador raiz em `{workspace}/pom.xml`, emita TODOS os demais arquivos de módulos (`app/core/`, `app/application/`, `app/infra-*/`, etc.) em **uma única resposta** como Write tool calls paralelos.
 - **Mapa de tokens (Fase 4.2)**: prepare-o imediatamente — o mapa depende apenas dos dados da Fase 1 e não tem dependências externas.
 
@@ -85,16 +85,19 @@ Para o relatório final (Fase 4.5), mantenha contadores internos durante a execu
 
 ---
 
-## Pré-requisito: Acesso ao Template (gh CLI ou git)
+## Pré-requisito: Acesso ao Template (MCP → gh CLI → git)
 
-**Este skill usa um dos dois métodos (em ordem de preferência):**
+**Este skill usa três métodos (em ordem de preferência):**
 
-1. **gh CLI** (recomendado) — mais rápido, ~3-5s, ~5K tokens
+1. **MCP `get_file_contents`** (primário) — sem dependências externas; disponível sempre que
+   o GitHub MCP estiver ativo na sessão Claude Code.
+
+2. **gh CLI** (fallback) — até ~40 arquivos; requer instalação e autenticação.
    - Instalado? `which gh`
    - Autenticado? `gh auth status`
    - Se não: `brew install gh && gh auth login`
 
-2. **git** (universal fallback) — sempre disponível, ~30-50MB cache local
+3. **git clone** (último recurso) — universal, ~30-50MB cache local.
    - Comando: `git --version` (já deve estar instalado)
    - Sem autenticação necessária para repositórios públicos
 
@@ -104,8 +107,8 @@ Para o relatório final (Fase 4.5), mantenha contadores internos durante a execu
 
 Este fluxo é **somente leitura remota** do template público.
 
-- ✅ Permitido: ler arquivos do template via gh CLI ou git clone
-- ❌ Proibido: fazer push/commits, modificar template, usar MCP para escrita
+- ✅ Permitido: ler arquivos do template via MCP `get_file_contents`, gh CLI ou git clone
+- ❌ Proibido: fazer push/commits ou modificar o template remoto
 - ✅ Geração acontece apenas no workspace local do usuário
 
 ---
@@ -114,51 +117,70 @@ Este fluxo é **somente leitura remota** do template público.
 
 ## Fluxo de Dados: Pré-Fase 1 → Fase 4
 
-**Premissa importante**: Fase 4 **NÃO precisa de MCP**, pois todos os dados necessários foram
-carregados na Pré-Fase 1 via gh CLI ou git clone.
+**Premissa importante**: Fase 4 **NÃO precisa de fetch adicional**, pois todos os dados necessários foram
+carregados na Pré-Fase 1.
 
 ```
-Pré-Fase 1: Fetch via gh CLI (ou git clone fallback)
+Pré-Fase 1: MCP get_file_contents (primário)
+            ↳ fallback: gh CLI script (até ~40 arquivos)
+            ↳ fallback: git clone (último recurso)
     ↓
     Obtém 3 arquivos:
     • TEMPLATE-MANIFEST.json → metadados de módulos e tokens
     • GENERATOR.json → perguntas para entrevista
     • README.md → template para novo README
     ↓
-    Cache local (.apm/skills/.../cache/files/)
-    
+    Dados em contexto (+ cache local se obtidos via gh CLI ou git)
+
 Fase 1-3: Entrevista & decisões (apenas manipulação de dados já em contexto)
     ↓
-Fase 4: Geração local (reutiliza os 3 arquivos da Pré-Fase 1, **sem chamadas MCP**)
+Fase 4: Geração local (reutiliza os 3 arquivos da Pré-Fase 1, **sem novas chamadas de fetch**)
     ↓
     Gera arquivos adaptados no workspace local
 ```
 
-**Benefício**: Sem dependência de MCP em tempo de execução (Fase 4), apenas em Pré-Fase 1.
-**Implicação**: Se gh CLI estiver disponível, todo o skill roda com ~5K tokens (vs ~150K com MCP).
+**Benefício**: MCP não requer ferramentas externas e está sempre disponível na sessão Claude Code.
+**Fallback eficiente**: Se MCP falhar, gh CLI obtém até ~40 arquivos com ~5K tokens.
 
 ---
 
-## Pré-Fase 1 — Orquestração de Fetch (gh CLI com git clone Fallback)
+## Pré-Fase 1 — Orquestração de Fetch (MCP → gh CLI → git clone)
 
-O script shell otimizado tenta automaticamente, em ordem:
+Tente os métodos abaixo em ordem. Ao primeiro sucesso, prossiga para Fase 1.
 
-1. **gh CLI** (primário) — rápido, eficiente em tokens
-2. **git clone** (fallback) — universal, sempre disponível
+### Método 1 — MCP `get_file_contents` (primário)
 
-Script que orquestra isso:
-```bash
-.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh [owner] [repo] [branch] [batch_size] [refresh_cache]
+Faça as três chamadas em paralelo usando o GitHub MCP (owner/repo/branch definidos acima):
+
+```
+get_file_contents(owner, repo, "TEMPLATE-MANIFEST.json", branch)
+get_file_contents(owner, repo, "GENERATOR.json",         branch)
+get_file_contents(owner, repo, "README.md",              branch)
 ```
 
-### Execução automática
+Se todos os 3 arquivos forem obtidos: prosseguir para Fase 1.
+Se o MCP falhar ou não estiver disponível: usar Método 2.
 
-Quando o usuário diz algo como "criar projeto Java", o script é executado automaticamente:
+### Método 2 — gh CLI (fallback, até ~40 arquivos)
+
+Execute o script otimizado com cache e retry:
+
 ```bash
 .apm/skills/gerador-scaffold-java/scripts/fetch-template.sh heandroro java-hexagonal-template main 4 false
 ```
 
-### Contrato de Resposta (API Contract)
+O script tenta gh CLI e, se falhar, cai automaticamente para git clone (Método 3).
+
+### Método 3 — git clone (último recurso, acionado pelo script acima)
+
+Invocado automaticamente por `fetch-template.sh` quando gh CLI falha:
+```
+.apm/skills/gerador-scaffold-java/scripts/fetch-template-git.sh
+```
+
+Se todos os métodos falharem: exibir erro claro ao usuário e interromper o skill.
+
+### Contrato de Resposta — Métodos 2 e 3 (script)
 
 **JSON Response** (stdout):
 ```json
@@ -176,32 +198,27 @@ Quando o usuário diz algo como "criar projeto Java", o script é executado auto
 }
 ```
 
-**Status Codes** (exit code + JSON `.status` field):
-
-| Code | Significado | Ação |
-|------|------------|------|
+| Status | Significado | Ação |
+|--------|------------|------|
 | **0** | ✅ Sucesso (todos 3 arquivos obtidos) | Extrair `.files{}` e prosseguir com Fase 1 |
-| **1** | ❌ Falha total (gh CLI e git clone ambos falharam) | Mostrar erro ao usuário; interromper skill |
-
-**Nota importante**: Ambos os scripts (fetch-template.sh e fetch-template-git.sh) retornam o **mesmo JSON**, apenas a origem (`metadata.source`) muda. Assim, o código LLM é transparente ao fallback.
+| **1** | ❌ Falha total (gh CLI e git clone falharam) | Mostrar erro; interromper skill |
 
 ### Após receber os dados
 
-Independentemente da fonte (gh CLI ou git clone), você tem em contexto:
+Independentemente do método usado, você tem em contexto:
 - `TEMPLATE-MANIFEST.json` — metadados de módulos
 - `GENERATOR.json` — perguntas de entrevista
 - `README.md` — template README
 
 Estes dados **permanecem em contexto para todo o resto do skill** (Fases 1-4).
-**Sem chamadas MCP adicionais necessárias.**
+**Não refaça o fetch** — não repita chamadas MCP nem execute o script novamente.
 
 ---
 
 ## Fase 1 — Entrevista de Projeto
 
-**Antes da primeira pergunta**, leia os dois arquivos de configuração via `get_file_contents`
-(owner/repo/branch definidos acima) — **somente se o cache não foi utilizado na Pré-Fase 1**.
-Armazene ambos em contexto.
+**Antes da primeira pergunta**, confirme que `TEMPLATE-MANIFEST.json` e `GENERATOR.json` estão
+em contexto (carregados na Pré-Fase 1). **Não refaça o fetch** — os dados já estão disponíveis.
 
 Faça as perguntas abaixo **uma de cada vez**, aguardando a resposta antes de prosseguir.
 Use linguagem amigável e exemplos concretos para guiar o usuário.
