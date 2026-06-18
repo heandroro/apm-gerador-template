@@ -152,7 +152,9 @@ Quando o usuário diz algo como "criar projeto Java", o script é executado auto
 .apm/skills/gerador-scaffold-java/scripts/fetch-template.sh heandroro java-hexagonal-template main 4 false
 ```
 
-**Resultado esperado**: JSON com `status` e `files`:
+### Contrato de Resposta (API Contract)
+
+**JSON Response** (stdout):
 ```json
 {
   "files": {
@@ -161,22 +163,21 @@ Quando o usuário diz algo como "criar projeto Java", o script é executado auto
     "README.md": "# Template..."
   },
   "metadata": {
-    "source": "gh-cli",
+    "source": "gh-cli",        // or "git-clone-first" or "git-pull"
     "duration": "3s"
   },
   "status": 0
 }
 ```
 
-### Interpretar status code
+**Status Codes** (exit code + JSON `.status` field):
 
-| Status | Significado | Ação |
-|--------|------------|------|
-| **0** | Sucesso (todos 3 arquivos obtidos via gh CLI) | Prosseguir com Fase 1 com os dados |
-| **1** | Falha (gh CLI indisponível, fallback para git clone já executado automaticamente) | Continuar com dados do git clone (também retorna status 0 se bem-sucedido) |
+| Code | Significado | Ação |
+|------|------------|------|
+| **0** | ✅ Sucesso (todos 3 arquivos obtidos) | Extrair `.files{}` e prosseguir com Fase 1 |
+| **1** | ❌ Falha total (gh CLI e git clone ambos falharam) | Mostrar erro ao usuário; interromper skill |
 
-**Nota**: O script trata o fallback internamente. Se gh CLI falhar, ele chama `fetch-template-git.sh` automaticamente.
-Você recebe os mesmos 3 arquivos, apenas a origem muda (gh-cli vs git clone).
+**Nota importante**: Ambos os scripts (fetch-template.sh e fetch-template-git.sh) retornam o **mesmo JSON**, apenas a origem (`metadata.source`) muda. Assim, o código LLM é transparente ao fallback.
 
 ### Após receber os dados
 

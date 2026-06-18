@@ -27,6 +27,42 @@ All generation happens locally in the user's workspace — no commits or pushes 
 | `.apm/skills/gerador-scaffold-java/prompts/new-java-hexagonal-project.prompt.md` | Interview questions and flow | Update when adding new user questions |
 | `.apm/skills/gerador-scaffold-java/references/module-dependencies.md` | Maven dependency rules (pom.xml format) | Update when template modules change |
 
+## API Contract: Template Fetch Scripts
+
+### Status Code Contract (fetch-template.sh and fetch-template-git.sh)
+
+Both fetch scripts return the same JSON contract and exit codes, ensuring transparent fallback:
+
+**Exit Codes**:
+| Code | Meaning | Use Case | JSON Status |
+|------|---------|----------|-------------|
+| `0` | Complete success (all 3 files obtained) | All files available in cache/network | `status: 0` |
+| `1` | Complete failure (no files obtained) | gh CLI unavailable OR git clone failed | `status: 1` (with error message) |
+
+**JSON Contract (stdout)**:
+```json
+{
+  "files": {
+    "TEMPLATE-MANIFEST.json": "{ ...content... }",
+    "GENERATOR.json": "{ ...content... }",
+    "README.md": "..."
+  },
+  "metadata": {
+    "source": "gh-cli",        // or "git-clone-first" or "git-pull"
+    "duration": "3s"           // only in gh-cli
+  },
+  "status": 0
+}
+```
+
+**For SKILL.md / LLM Integration**:
+- Always check `status` field in JSON response
+- If `status == 0`: proceed with generation using files from JSON
+- If `status == 1`: script already failed with error message; present error to user
+- Files are always in `.files{}` object (same structure regardless of source)
+
+---
+
 ## Architecture: Template Data Fetch
 
 ### Overview
