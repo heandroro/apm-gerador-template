@@ -72,10 +72,11 @@ Para otimizar custo de tokens e processamento da LLM:
 
 Para minimizar o tempo total de execução, aplique batching de tool calls em operações de I/O:
 
-- **Fase 4.1 (Leitura de template)**: Reutilize os dados já em contexto da Pré-Fase 1 — **não fazer novas chamadas de fetch**.
-  Os 3 arquivos já foram carregados (via MCP, gh CLI ou git clone).
+- **Fase 4.1 (Fetch dos arquivos-fonte)**: Um Bash para listar paths via git tree API, depois
+  batches paralelos de `get_file_contents` via MCP (≤20 arquivos por batch). O mapa de tokens
+  (Fase 4.2) pode ser preparado em paralelo com o primeiro batch de MCP.
 - **Escritas de arquivo (Fase 4.3)**: após criar o `pom.xml` agregador raiz em `{workspace}/pom.xml`, emita TODOS os demais arquivos de módulos (`app/core/`, `app/application/`, `app/infra-*/`, etc.) em **uma única resposta** como Write tool calls paralelos.
-- **Mapa de tokens (Fase 4.2)**: prepare-o imediatamente — o mapa depende apenas dos dados da Fase 1 e não tem dependências externas.
+- **Mapa de tokens (Fase 4.2)**: prepare-o em paralelo com os fetches da Fase 4.1 — depende apenas dos dados da Pré-Fase 1, sem dependência dos arquivos-fonte.
 
 Regra geral: se múltiplas operações não têm dependência entre si, emita-as juntas em uma única resposta.
 
@@ -353,32 +354,53 @@ Consulte `./references/module-dependencies.md` apenas para as regras de **format
 
 Execute na seguinte ordem, sem pular etapas:
 
-### 4.1 — Ler arquivos do template (já em cache local da Pré-Fase 1)
+### 4.1 — Descobrir e buscar arquivos-fonte do template (git tree + MCP)
 
-**IMPORTANTE**: Os arquivos do template **já foram carregados na Pré-Fase 1** via gh CLI ou git clone fallback.
-**Não fazer chamadas MCP adicionais** — reutilizar os dados já em contexto.
+#### Passo 1 — Listar paths do template (um comando Bash)
 
-#### Revisão dos dados em contexto (Pré-Fase 1)
+Com base em `selectedModules[]` da Fase 3, construa o filtro `jq` dinamicamente e execute:
 
-Você já tem em contexto os 3 arquivos de configuração carregados na Pré-Fase 1:
-- `TEMPLATE-MANIFEST.json` — lista completa de módulos e seus arquivos
-- `GENERATOR.json` — perguntas de entrevista
-- `README.md` — template README
+```bash
+gh api 'repos/{TEMPLATE_OWNER}/{TEMPLATE_REPO}/git/trees/{TEMPLATE_BRANCH}?recursive=1' \
+  --jq '[.tree[]
+    | select(.type == "blob")
+    | select(
+        .path == "pom.xml"                                or
+        .path == ".gitignore"                             or
+        .path == "AGENTS.md"                              or
+        (.path | startswith("app/core/"))                 or
+        (.path | startswith("app/application/"))          or
+        # repita um startswith para cada módulo infra em selectedModules[]:
+        (.path | startswith("app/infra-postgres/"))       or
+        (.path | startswith("infra/local/docker-compose"))
+      )
+    | .path
+  ] | .[]'
+```
 
-Monte a lista de arquivos a gerar para todos os módulos selecionados usando os caminhos
-do `TEMPLATE-MANIFEST.json.modules[].manifest[]`. 
+> Substitua `{TEMPLATE_OWNER}`, `{TEMPLATE_REPO}`, `{TEMPLATE_BRANCH}` pelos valores do
+> topo deste documento. Inclua um `startswith("app/{módulo}/")` por cada módulo em
+> `selectedModules[]`. Exclua módulos não selecionados.
 
-Use os caminhos listados em `TEMPLATE-MANIFEST.json.modules[].manifest` para descobrir
-os arquivos críticos de cada módulo.
+Resultado: lista de paths relativos à raiz do template (ex: `app/core/pom.xml`,
+`app/core/src/main/java/com/mycompany/template/core/domain/User.java`).
 
-Leia **somente os arquivos dos módulos selecionados** — não leia módulos excluídos.
+#### Passo 2 — Buscar arquivos via MCP (batches paralelos, ≤20 por batch)
 
-**Próximo passo**: Fase 4.2 (mapa de tokens). Não há tool calls nesta subetapa — apenas análise de dados já em contexto.
+Para cada path da lista, chame `get_file_contents(owner, repo, path, branch)` em batches
+paralelos de no máximo 20 chamadas por resposta.
 
-### 4.2 — Preparar mapa de substituição (junto com 4.1)
+Mantenha todos os conteúdos em contexto indexados pelo path do template.
 
-Monte o mapa de tokens na **mesma resposta** em que emite as leituras MCP da Fase 4.1.
-O mapa depende apenas dos dados coletados na Fase 1 — não há dependência das leituras de arquivo.
+> O mapa de tokens (Fase 4.2) **pode ser preparado em paralelo** com o primeiro batch —
+> não há dependência entre eles.
+
+Leia **somente os arquivos dos módulos selecionados** — ignore paths de módulos excluídos.
+
+### 4.2 — Preparar mapa de substituição (em paralelo com Fase 4.1)
+
+Monte o mapa de tokens **em paralelo com os batches de fetch da Fase 4.1** (sem dependência
+entre eles). O mapa depende apenas dos dados da Pré-Fase 1 — não dos arquivos-fonte.
 
 Monte o mapa de tokens usando `TEMPLATE-MANIFEST.json.replaceTokens[]` (já em contexto).
 
@@ -410,8 +432,14 @@ Consulte `./references/files-to-adapt.md` para as regras de substituição por *
    - Módulos em `app/{módulo}/` → `app/core/`, `app/application/`, `app/infra-*/`
    - Infraestrutura em `infra/local/docker-compose.yml`
    - Arquivos raiz: `README.md`, `AGENTS.md`, `.gitignore`
-2. Para cada arquivo de cada módulo incluído, aplicar as substituições do mapa acima.
-3. Renomear caminhos de pacote Java: `com/mycompany/template/` → caminho derivado de `{NAMESPACE}`.
+2. Para cada arquivo buscado na Fase 4.1, adaptar o conteúdo (não gerar — usar o conteúdo
+   real do template):
+   - Substituir todos os tokens conforme o mapa da Fase 4.2
+   - Calcular o path de destino: path do template → substituir `com/mycompany/template/`
+     por `{NAMESPACE_PATH}/` no caminho do arquivo
+3. O path de destino final de cada arquivo é o path do template com a renomeação de pacote
+   aplicada. Ex: `app/core/src/main/java/com/mycompany/template/core/domain/User.java`
+   → `app/core/src/main/java/{NAMESPACE_PATH}/core/domain/User.java`.
 4. Filtrar `infra/local/docker-compose.yml`: manter apenas os serviços presentes em `selectedDockerServices[]`.
 5. Ordem de geração:
    - **Passo único**: criar `{workspace}/pom.xml` (pom agregador raiz — contém apenas as entradas
