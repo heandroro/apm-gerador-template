@@ -1,19 +1,21 @@
 #!/bin/bash
 # Cache utilities for template data
-# Provides functions for 24-hour local caching of GitHub template files
+# Provides functions for 24-hour local caching of GitHub template files (per-file and monolithic)
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CACHE_DIR="${PROJECT_ROOT}/.cache"
+FILES_CACHE_DIR="${CACHE_DIR}/files"
 CACHE_FILE="${CACHE_DIR}/template-files.json.gz"
 CACHE_META="${CACHE_DIR}/cache.meta"
+FILES_CACHE_META="${CACHE_DIR}/files.meta"
 
-# Create cache directory
-mkdir -p "$CACHE_DIR"
+# Create cache directories
+mkdir -p "$CACHE_DIR" "$FILES_CACHE_DIR"
 
-# Check if cache exists and is valid (< 24 hours)
+# Check if monolithic cache exists and is valid (< 24 hours)
 cache_is_valid() {
   if [[ ! -f "$CACHE_META" ]]; then
     return 1
@@ -27,7 +29,21 @@ cache_is_valid() {
   [[ $age -lt $max_age ]]
 }
 
-# Load cache from disk and decompress
+# Check if per-file cache exists and is valid
+files_cache_is_valid() {
+  if [[ ! -f "$FILES_CACHE_META" ]]; then
+    return 1
+  fi
+
+  local cached_time=$(cat "$FILES_CACHE_META" 2>/dev/null || echo "0")
+  local current_time=$(date +%s)
+  local age=$((current_time - cached_time))
+  local max_age=$((24 * 60 * 60))
+
+  [[ $age -lt $max_age ]]
+}
+
+# Load monolithic cache from disk and decompress
 cache_load() {
   if [[ ! -f "$CACHE_FILE" ]]; then
     return 1
@@ -36,20 +52,32 @@ cache_load() {
   gunzip -c "$CACHE_FILE"
 }
 
-# Save data to cache with gzip compression
+# Load per-file cache (returns directory path if valid)
+files_cache_load() {
+  if files_cache_is_valid; then
+    echo "$FILES_CACHE_DIR"
+    return 0
+  fi
+  return 1
+}
+
+# Save data to monolithic cache with gzip compression
 cache_save() {
   local data="$1"
 
-  # Save compressed data
   echo "$data" | gzip > "$CACHE_FILE"
-
-  # Save timestamp
   date +%s > "$CACHE_META"
 
   echo "[cache] Template files saved (size: $(du -h "$CACHE_FILE" | cut -f1))" >&2
 }
 
-# Clean expired cache
+# Mark per-file cache as valid (after successful fetch)
+files_cache_mark_valid() {
+  date +%s > "$FILES_CACHE_META"
+  echo "[cache] Per-file cache marked valid" >&2
+}
+
+# Clean expired monolithic cache
 cache_clean() {
   if [[ -f "$CACHE_META" ]]; then
     local cached_time=$(cat "$CACHE_META")
@@ -59,7 +87,25 @@ cache_clean() {
 
     if [[ $age -ge $max_age ]]; then
       rm -f "$CACHE_FILE" "$CACHE_META"
-      echo "[cache] Expired cache cleaned" >&2
+      echo "[cache] Expired monolithic cache cleaned" >&2
+      return 1
+    fi
+  fi
+
+  return 1
+}
+
+# Clean expired per-file cache
+files_cache_clean() {
+  if [[ -f "$FILES_CACHE_META" ]]; then
+    local cached_time=$(cat "$FILES_CACHE_META")
+    local current_time=$(date +%s)
+    local age=$((current_time - cached_time))
+    local max_age=$((24 * 60 * 60))
+
+    if [[ $age -ge $max_age ]]; then
+      rm -f "$FILES_CACHE_DIR"/*.json "$FILES_CACHE_DIR"/*.err "$FILES_CACHE_META"
+      echo "[cache] Expired per-file cache cleaned" >&2
       return 1
     fi
   fi
@@ -76,10 +122,27 @@ cache_status() {
     local age=$((current_time - cached_time))
     local hours=$((age / 3600))
 
-    echo "[cache] Valid cache found (${hours}h old, size: $size)"
+    echo "[cache] Valid monolithic cache found (${hours}h old, size: $size)"
     return 0
   else
-    echo "[cache] No valid cache found"
+    echo "[cache] No valid monolithic cache found"
+    return 1
+  fi
+}
+
+# Report per-file cache status
+files_cache_status() {
+  if files_cache_is_valid; then
+    local file_count=$(ls -1 "$FILES_CACHE_DIR"/*.json 2>/dev/null | wc -l)
+    local cached_time=$(cat "$FILES_CACHE_META")
+    local current_time=$(date +%s)
+    local age=$((current_time - cached_time))
+    local hours=$((age / 3600))
+
+    echo "[cache] Valid per-file cache found (${hours}h old, $file_count files)"
+    return 0
+  else
+    echo "[cache] No valid per-file cache found"
     return 1
   fi
 }

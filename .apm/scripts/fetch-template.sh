@@ -1,14 +1,15 @@
 #!/bin/bash
 # Orchestrated template fetch using gh CLI
-# Reads multiple files in parallel batches, applies local caching
+# Reads multiple files in parallel batches with per-file caching, error tracking, and retry logic
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Source cache utilities
-source "$SCRIPT_DIR/lib/cache.sh"
+# Cache locations
+FILES_CACHE_DIR="${PROJECT_ROOT}/.cache/files"
+mkdir -p "$FILES_CACHE_DIR"
 
 # GitHub template reference
 OWNER="${1:-heandroro}"
@@ -16,6 +17,7 @@ REPO="${2:-java-hexagonal-template}"
 BRANCH="${3:-main}"
 BATCH_SIZE="${4:-4}"
 REFRESH_CACHE="${5:-false}"
+MAX_RETRIES="${6:-2}"
 
 # Files to fetch (core configuration files + sample modules)
 FILES=(
@@ -24,26 +26,6 @@ FILES=(
   "README.md"
 )
 
-# Print usage
-usage() {
-  cat >&2 <<EOF
-Usage: $(basename "$0") [owner] [repo] [branch] [batch_size] [refresh_cache]
-
-Fetch template files from GitHub using gh CLI with parallel batching and caching.
-
-Arguments:
-  owner        GitHub owner (default: heandroro)
-  repo         Repository name (default: java-hexagonal-template)
-  branch       Git branch (default: main)
-  batch_size   Files per batch (default: 4)
-  refresh_cache Force cache refresh (default: false)
-
-Examples:
-  $(basename "$0")                                    # Use defaults
-  $(basename "$0") heandroro java-hexagonal-template main 4 true  # Refresh cache
-EOF
-}
-
 # Check gh CLI is available
 check_gh_cli() {
   if ! command -v gh &>/dev/null; then
@@ -51,7 +33,6 @@ check_gh_cli() {
     return 1
   fi
 
-  # Test GitHub API access
   if ! gh api user --jq '.login' &>/dev/null; then
     echo "[error] GitHub authentication failed. Run: gh auth login" >&2
     return 1
@@ -60,45 +41,167 @@ check_gh_cli() {
   return 0
 }
 
-# Fetch file content from GitHub
-fetch_file() {
+# Fetch and cache a single file
+fetch_file_with_cache() {
   local file="$1"
-  local url="repos/$OWNER/$REPO/contents/$file"
+  local retry_count="${2:-0}"
+  local cache_file="$FILES_CACHE_DIR/$file.json"
+  local err_file="$FILES_CACHE_DIR/$file.err"
 
-  gh api "$url" --jq '.content | @base64d' 2>/dev/null || {
-    echo "[error] Failed to fetch $file" >&2
+  # Try to load from cache first (if not refreshing)
+  if [[ "$REFRESH_CACHE" != "true" ]] && [[ -f "$cache_file" ]]; then
+    cat "$cache_file"
+    rm -f "$err_file" 2>/dev/null || true
+    return 0
+  fi
+
+  # Fetch from GitHub
+  local url="repos/$OWNER/$REPO/contents/$file"
+  if gh api "$url" --jq '.content | @base64d' > "$cache_file" 2>/dev/null; then
+    rm -f "$err_file" 2>/dev/null || true
+    cat "$cache_file"
+    return 0
+  else
+    # Save error state
+    echo "Failed to fetch $file (attempt $((retry_count + 1)))" > "$err_file"
     return 1
-  }
+  fi
 }
 
-# Fetch a batch of files in parallel
+# Fetch a batch of files in parallel, with per-file caching
 fetch_batch() {
   local -a batch=("$@")
   local -a pids=()
+  local -a temp_files=()
 
   echo "[fetch] Batch (${#batch[@]} files)..." >&2
 
   for file in "${batch[@]}"; do
+    local temp_file=$(mktemp)
+    temp_files+=("$temp_file")
+
     (
-      # Subshell: fetch and output with file marker
-      {
-        echo "==FILE_START:$file=="
-        fetch_file "$file"
-        echo "==FILE_END:$file=="
-      } 2>&1
+      if fetch_file_with_cache "$file" > "$temp_file" 2>/dev/null; then
+        echo "==SUCCESS:$file=="
+      else
+        echo "==FAIL:$file=="
+      fi
     ) &
     pids+=($!)
   done
 
   # Wait for all parallel jobs
   for pid in "${pids[@]}"; do
-    wait "$pid" || {
-      echo "[error] Batch fetch failed" >&2
-      return 1
-    }
+    wait "$pid" || true
+  done
+
+  # Output results
+  for temp_file in "${temp_files[@]}"; do
+    cat "$temp_file"
+    rm -f "$temp_file"
+  done
+}
+
+# Detect failed files from error markers
+get_failed_files() {
+  if [[ ! -d "$FILES_CACHE_DIR" ]]; then
+    return 1
+  fi
+
+  local failed=()
+  for err_file in "$FILES_CACHE_DIR"/*.err 2>/dev/null; do
+    [[ -f "$err_file" ]] || continue
+    local filename=$(basename "$err_file" .err)
+    failed+=("$filename")
+  done
+
+  if [[ ${#failed[@]} -gt 0 ]]; then
+    printf '%s\n' "${failed[@]}"
+    return 0
+  fi
+
+  return 1
+}
+
+# Retry only failed files with exponential backoff
+retry_failed_files() {
+  local retry_count="$1"
+  local failed_files=()
+
+  # Get list of failed files
+  while IFS= read -r file; do
+    failed_files+=("$file")
+  done < <(get_failed_files)
+
+  if [[ ${#failed_files[@]} -eq 0 ]]; then
+    return 0  # No failures
+  fi
+
+  echo "[retry] Attempting ${#failed_files[@]} failed files (retry $retry_count/$MAX_RETRIES)..." >&2
+
+  # Exponential backoff: 2^retry_count seconds (2s, 4s, 8s, ...)
+  local backoff=$((2 ** retry_count))
+  sleep "$backoff"
+
+  # Retry failed files
+  for file in "${failed_files[@]}"; do
+    fetch_file_with_cache "$file" "$retry_count" > /dev/null 2>&1 || true
   done
 
   return 0
+}
+
+# Build JSON output from cached files
+build_json_output() {
+  local json_output='{"files": {}}'
+  local missing_files=()
+  local successful_files=()
+
+  for file in "${FILES[@]}"; do
+    local cache_file="$FILES_CACHE_DIR/$file.json"
+    local err_file="$FILES_CACHE_DIR/$file.err"
+
+    if [[ -f "$cache_file" ]]; then
+      local content=$(cat "$cache_file")
+      json_output=$(echo "$json_output" | jq \
+        --arg file "$file" \
+        --arg content "$content" \
+        '.files[$file] = $content')
+      successful_files+=("$file")
+    else
+      missing_files+=("$file")
+    fi
+  done
+
+  # Add missing array if there are failures
+  if [[ ${#missing_files[@]} -gt 0 ]]; then
+    local missing_json=$(printf '%s\n' "${missing_files[@]}" | jq -R . | jq -s .)
+    json_output=$(echo "$json_output" | jq --argjson missing "$missing_json" '.missing = $missing')
+  fi
+
+  echo "$json_output"
+}
+
+# Determine exit status based on success/failure counts
+get_exit_status() {
+  local successful=0
+  local failed=0
+
+  for file in "${FILES[@]}"; do
+    if [[ -f "$FILES_CACHE_DIR/$file.json" ]]; then
+      successful=$((successful + 1))
+    else
+      failed=$((failed + 1))
+    fi
+  done
+
+  if [[ $failed -eq 0 ]]; then
+    return 0  # Status 0: complete success
+  elif [[ $successful -eq 0 ]]; then
+    return 1  # Status 1: complete failure
+  else
+    return 2  # Status 2: partial success
+  fi
 }
 
 # Main function
@@ -113,72 +216,69 @@ main() {
     return 1
   fi
 
-  # Check cache (unless refresh requested)
-  if [[ "$REFRESH_CACHE" != "true" ]] && cache_is_valid; then
-    cache_status
-    local cached=$(cache_load)
-    echo "$cached"
-    return 0
+  # Clean old error files if doing fresh fetch
+  if [[ "$REFRESH_CACHE" == "true" ]]; then
+    rm -f "$FILES_CACHE_DIR"/*.err 2>/dev/null || true
   fi
 
-  # Clean expired cache
-  cache_clean || true
-
   # Fetch files in batches
-  local output=""
   local files_count=${#FILES[@]}
   local batches=0
+  local retry_attempt=0
 
   for ((i = 0; i < files_count; i += BATCH_SIZE)); do
     batches=$((batches + 1))
     local batch=("${FILES[@]:i:BATCH_SIZE}")
-    local batch_output=$(fetch_batch "${batch[@]}")
-    output="${output}${batch_output}"
+    fetch_batch "${batch[@]}" > /dev/null
   done
 
-  # Parse and aggregate results
-  local json_output="{}"
-  echo "$output" | awk '
-    /^==FILE_START:(.+)==$/ {
-      current_file = gensub(/^==FILE_START:(.+)==$/, "\\1", 1)
-      content = ""
-    }
-    /^==FILE_END:(.+)==$/ {
-      print current_file "|" content
-      content = ""
-    }
-    !/^==FILE_/ {
-      if (content) content = content "\n"
-      content = content $0
-    }
-  ' | while IFS='|' read -r file content; do
-    if [[ -n "$file" ]]; then
-      json_output=$(echo "$json_output" | jq --arg file "$file" --arg content "$content" \
-        '.files += {($file): $content}')
-    fi
+  # Retry failed files if any
+  while [[ $retry_attempt -lt $MAX_RETRIES ]] && get_failed_files > /dev/null 2>&1; do
+    retry_attempt=$((retry_attempt + 1))
+    retry_failed_files "$retry_attempt"
   done
 
-  # Add metadata
+  # Build output JSON
   local end_time=$(date +%s)
   local duration=$((end_time - start_time))
-  local size=$(echo -n "$output" | wc -c)
-  local size_kb=$((size / 1024))
+  local json_output=$(build_json_output)
 
+  # Add metadata
   json_output=$(echo "$json_output" | jq \
-    --arg cached "false" \
     --arg batches "$batches" \
     --arg duration "${duration}s" \
-    --arg size "${size_kb}KB" \
-    '.metadata = {cached: $cached, batches: $batches, duration: $duration, size: $size}')
+    '.metadata = {source: "gh-cli", batches: $batches, duration: $duration}')
 
-  # Cache the result
-  cache_save "$json_output"
+  # Determine final status
+  local final_status=0
+  get_exit_status || final_status=$?
+
+  # Add status to JSON
+  json_output=$(echo "$json_output" | jq \
+    --arg status "$final_status" \
+    '.status = ($status | tonumber)')
 
   # Output result
   echo "$json_output"
-  echo "[template] Fetch complete ($batches batches, ${duration}s)" >&2
 
-  return 0
+  # Log summary
+  local successful=0
+  local failed=0
+  for file in "${FILES[@]}"; do
+    if [[ -f "$FILES_CACHE_DIR/$file.json" ]]; then
+      successful=$((successful + 1))
+    else
+      failed=$((failed + 1))
+    fi
+  done
+
+  if [[ $failed -eq 0 ]]; then
+    echo "[template] Fetch complete ($successful/$files_count files, ${duration}s)" >&2
+  else
+    echo "[template] Fetch partial ($successful/$files_count files, $failed missing, ${duration}s)" >&2
+  fi
+
+  return "$final_status"
 }
 
 # Run main
