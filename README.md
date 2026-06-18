@@ -1,7 +1,9 @@
 # apm-gerador-template
 
-APM package for scaffolding Java Hexagonal Architecture projects from the
-[java-hexagonal-template](https://github.com/heandroro/java-hexagonal-template).
+APM package for scaffolding Java Hexagonal Architecture projects.
+
+**Default template**: [java-hexagonal-template](https://github.com/heandroro/java-hexagonal-template)
+(Configurable via `TEMPLATE_OWNER` and `TEMPLATE_REPO` environment variables — see [DEVELOPMENT.md](DEVELOPMENT.md))
 
 Official APM references: [microsoft.github.io/apm](https://microsoft.github.io/apm/) (general) and [microsoft.github.io/apm/producer](https://microsoft.github.io/apm/producer/) (producer).
 
@@ -11,17 +13,27 @@ Official APM references: [microsoft.github.io/apm](https://microsoft.github.io/a
 apm install heandroro/apm-gerador-template
 ```
 
-## Setup (Required)
+## Setup (Minimal)
 
-### 1. Create or get a GitHub personal access token
+The skill uses a **hybrid fetch strategy** for template data:
 
-Generate a token at: https://github.com/settings/tokens
+### Option A: Install gh CLI (Recommended)
 
-Minimum scopes needed: `public_repo` (read-only access to public repositories)
+**Fastest & most token-efficient approach.**
 
-### 2. Configure GitHub MCP in your Claude Code settings
+1. Install: `brew install gh` (macOS) or see [github.com/cli/cli](https://github.com/cli/cli)
+2. Authenticate: `gh auth login`
+3. Done! The skill auto-detects gh CLI and uses it.
 
-Add to your `settings.json` or `settings.local.json`:
+### Option B: Use git (Universal Fallback)
+
+**Works everywhere** — no additional installation needed.
+
+The skill automatically falls back to `git clone` if gh CLI is unavailable.
+
+### Optional: GitHub MCP (For advanced features)
+
+If you need GitHub integration beyond template fetching, configure MCP:
 
 ```json
 {
@@ -37,15 +49,12 @@ Add to your `settings.json` or `settings.local.json`:
 }
 ```
 
-### 3. Verify the setup
+### Verification
 
-The skill will automatically detect if GitHub MCP is configured and ready.
-
-If configuration is missing, the skill will:
-- Check if `GITHUB_TOKEN` exists → suggest activating GitHub MCP
-- Check if token is missing → suggest both token and MCP setup
-
-No manual verification needed — the skill handles it.
+The skill will automatically:
+- Try `gh CLI` (primary, ~3-5s, 5K tokens)
+- Fall back to `git clone` if gh unavailable (universal, ~30-50MB)
+- Work offline with cache hits (~100ms)
 
 ## Usage
 
@@ -60,7 +69,7 @@ when you say things like:
 - _"criar repositório com arquitetura hexagonal"_
 
 The skill will interview you, present a summary, and then generate all files locally
-in your workspace using the template data read through GitHub MCP.
+in your workspace using template data (fetched via gh CLI or git clone).
 
 No commit or push happens automatically in this flow.
 
@@ -74,19 +83,23 @@ The prompt template is now bundled as a skill asset at:
 
 ## What gets generated
 
-| Module | Included when |
-| --- | --- |
-| `core` | Always |
-| `application` | Always |
-| `infra-api` | `app_type = api` |
-| `infra-kafka` | `app_type = worker`, broker = `kafka` |
-| `infra-postgres` | `database = postgres` or `both` |
-| `infra-dynamodb` | `database = dynamodb` or `both` |
-| `infra-valkey` | `cache = server` |
-| `infra-client-api` | `http_client = feign` |
+The skill generates a complete Java Hexagonal Architecture project with:
 
-All files are adapted with token substitution and written locally. See the skill documentation for the complete token reference.
+- **Core modules** (always included): `core`, `application`
+- **Infrastructure modules** (conditional): API, database, cache, messaging, etc.
+- **Configuration files**: `pom.xml`, `application.yml`, `Dockerfile`, etc.
+- **Documentation**: `README.md`, `AGENTS.md`
+
+**Modules included** depend on your choices during the interview (database type, app type, etc.).
+
+For the **complete module list and selection logic**, see:
+- [SKILL.md](DEVELOPMENT.md) — Fase 3 (Module Decision)
+- Template source: [TEMPLATE-MANIFEST.json](https://github.com/heandroro/java-hexagonal-template/blob/main/TEMPLATE-MANIFEST.json) (source of truth)
+
+All files are adapted with token substitution based on your project name and namespace.
 
 ## Template source
 
-[heandroro/java-hexagonal-template](https://github.com/heandroro/java-hexagonal-template)
+**Default**: [heandroro/java-hexagonal-template](https://github.com/heandroro/java-hexagonal-template)
+
+**Customizable**: Set `TEMPLATE_OWNER` and `TEMPLATE_REPO` environment variables to use a different template repository (see [DEVELOPMENT.md](DEVELOPMENT.md#template-configuration-centralized))

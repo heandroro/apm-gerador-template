@@ -1,6 +1,6 @@
 ---
 name: gerador-scaffold-java
-description: "Use when the user wants to create a new Java project from the hexagonal template (https://github.com/heandroro/java-hexagonal-template). Triggers include: \"criar projeto\", \"novo projeto Java\", \"gerar projeto\", \"scaffolding\", \"criar repositório hexagonal\", \"novo serviço Java\", \"criar microserviço\", or any mention of starting a new Java service based on the hexagonal architecture template. Conducts a structured interview, reads template data via the GitHub MCP, and generates the adapted files locally in the workspace by default. Apply even when the user says only \"quero criar um projeto\" or \"me ajuda a criar um serviço novo\"."
+description: "Use when the user wants to create a new Java project from the hexagonal template (https://github.com/heandroro/java-hexagonal-template). Triggers include: \"criar projeto\", \"novo projeto Java\", \"gerar projeto\", \"scaffolding\", \"criar repositório hexagonal\", \"novo serviço Java\", \"criar microserviço\", or any mention of starting a new Java service based on the hexagonal architecture template. Conducts a structured interview, reads template data via gh CLI (with git clone fallback), and generates the adapted files locally in the workspace by default. Apply even when the user says only \"quero criar um projeto\" or \"me ajuda a criar um serviço novo\"."
 argument-hint: "Opcionalmente informe o nome do projeto, namespace (ex: payment-service, com.minhaempresa.pagamentos), ou `--refresh-cache` para forçar releitura do template mesmo com cache válido."
 ---
 
@@ -14,23 +14,42 @@ Referência oficial do APM: https://microsoft.github.io/apm/
 
 ---
 
-## Template de Referência
+**Nota sobre paths neste documento**: Todos os caminhos scripts (`scripts/fetch-template.sh`, etc.)
+são **relativos à raiz da skill** (`.apm/skills/gerador-scaffold-java/`). Se a estrutura de 
+diretórios mudar, manter os paths relativos será necessário (veja DEVELOPMENT.md para detalhes).
 
+---
+
+## Template de Referência (Configurável)
+
+**Padrão**:
 ```
 owner:  heandroro
 repo:   java-hexagonal-template
 branch: main
 ```
 
-Use sempre estes valores nas chamadas `get_file_contents`. Nunca infira owner/repo de outras fontes.
+**Configurável via**:
+- Variáveis de ambiente: `TEMPLATE_OWNER`, `TEMPLATE_REPO`, `TEMPLATE_BRANCH`
+- CLI arguments: `.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh [owner] [repo] [branch]`
 
-Arquivos de entrada obrigatórios — leia **ambos** na Fase 1:
+**Exemplo** (usar outro template):
+```bash
+TEMPLATE_OWNER=myorg TEMPLATE_REPO=my-template TEMPLATE_BRANCH=develop \
+  .apm/skills/gerador-scaffold-java/scripts/fetch-template.sh
+```
+
+Valores são centralizados em `.apm/skills/gerador-scaffold-java/lib/template-config.sh`.
+
+### Arquivos obrigatórios do template
+
 ```
 path: TEMPLATE-MANIFEST.json   → stack, módulos disponíveis, replaceTokens[], naming/mapper rules
 path: GENERATOR.json           → profiles[] pré-configurados e questions[] para entrevista guiada
+path: README.md                → template para novo README
 ```
 
-Leia cada um **uma única vez** na Fase 1 e reutilize o conteúdo em todas as fases seguintes.
+Leia cada um **uma única vez** na Pré-Fase 1 e reutilize o conteúdo em todas as fases seguintes.
 O template é a **fonte da verdade**: módulos, tokens e perguntas vêm dos arquivos acima,
 não de arquivos de referência locais deste gerador.
 Não faça chamadas MCP adicionais sem necessidade explícita.
@@ -53,118 +72,128 @@ Para otimizar custo de tokens e processamento da LLM:
 
 Para minimizar o tempo total de execução, aplique batching de tool calls em operações de I/O:
 
-- **Leituras MCP (Fase 4.1)**: emita TODAS as chamadas `get_file_contents` necessárias em **uma única resposta** como tool calls paralelos. Nunca leia arquivo por arquivo em mensagens separadas.
+- **Fase 4.1 (Leitura de template)**: Reutilize os dados já em contexto da Pré-Fase 1 — **não fazer tool calls**.
+  Os arquivos foram carregados via gh CLI ou git clone, não precisam de chamadas MCP adicionais.
 - **Escritas de arquivo (Fase 4.3)**: após criar o `pom.xml` raiz, emita TODOS os demais arquivos de módulos em **uma única resposta** como Write tool calls paralelos.
-- **Mapa de tokens (Fase 4.2)**: prepare-o na **mesma resposta** em que emite as leituras MCP — o mapa depende apenas dos dados da Fase 1 e não precisa aguardar as leituras concluírem.
+- **Mapa de tokens (Fase 4.2)**: prepare-o imediatamente — o mapa depende apenas dos dados da Fase 1 e não tem dependências externas.
 
 Regra geral: se múltiplas operações não têm dependência entre si, emita-as juntas em uma única resposta.
 
 Para o relatório final (Fase 4.5), mantenha contadores internos durante a execução:
-- `reads_total`: número de chamadas `get_file_contents` emitidas na Fase 4.1
-- `reads_batches`: número de respostas em que essas chamadas foram agrupadas
 - `writes_total`: número de chamadas `Write` emitidas na Fase 4.3
 - `writes_batches`: número de respostas em que essas escritas foram agrupadas
 
 ---
 
-## Pré-requisito: GitHub MCP com GITHUB_TOKEN
+## Pré-requisito: Acesso ao Template (gh CLI ou git)
 
-**Este skill REQUER GitHub MCP configurado com um `GITHUB_TOKEN` válido.**
+**Este skill usa um dos dois métodos (em ordem de preferência):**
 
-### Verificação automática em tempo de execução
+1. **gh CLI** (recomendado) — mais rápido, ~3-5s, ~5K tokens
+   - Instalado? `which gh`
+   - Autenticado? `gh auth status`
+   - Se não: `brew install gh && gh auth login`
 
-**Antes de iniciar**, execute este procedimento de detecção:
+2. **git** (universal fallback) — sempre disponível, ~30-50MB cache local
+   - Comando: `git --version` (já deve estar instalado)
+   - Sem autenticação necessária para repositórios públicos
 
-1. **Tente chamar `get_file_contents`** como teste:
-   ```
-   owner: heandroro
-   repo: java-hexagonal-template
-   path: TEMPLATE-MANIFEST.json
-   ```
+**Se nenhum estiver disponível**: Erro claro será exibido pedindo instalação.
 
-   **Resultado esperado:** sucesso → MCP está pronto, prossiga para Fase 1.
+### Segurança
 
-2. **Se a chamada falhar**, diagnostique o motivo:
+Este fluxo é **somente leitura remota** do template público.
 
-   **Caso A: Erro de autenticação / token inválido**
-   - **Mensagem ao usuário:**
-     ```
-     ❌ GitHub MCP retornou erro de autenticação.
-     
-     Solução:
-     1. Verifique se GITHUB_TOKEN está configurado em settings.json
-     2. Confirme que o token tem acesso ao repositório heandroro/java-hexagonal-template
-     3. Tokens podem expirar — gere um novo em: https://github.com/settings/tokens
-     
-     Após atualizar, tente novamente.
-     ```
-
-   **Caso B: MCP não está ativo / ferramentas não disponíveis**
-   - **Mensagem ao usuário:**
-     ```
-     ❌ GitHub MCP não está ativo ou acessível.
-     
-     Solução:
-     1. Confirme que GitHub MCP está configurado em settings.json com GITHUB_TOKEN
-     2. Restart Claude Code após configurar
-     3. Consulte: https://github.com/modelcontextprotocol/servers/tree/main/src/github
-     
-     Após configurar e reiniciar, tente novamente.
-     ```
-
-   **Caso C: Outro erro (network, não consegue resolver hostname, etc)**
-   - **Mensagem ao usuário:**
-     ```
-     ❌ Não consegui conectar ao GitHub para ler o template.
-     
-     Erro: [erro específico]
-     
-     Verificações:
-     1. Conexão com internet está ativa?
-     2. GitHub está acessível?
-     3. Firewall/proxy está bloqueando?
-     
-     Tente novamente em alguns instantes.
-     ```
-
-### Regra de segurança obrigatória (GitHub MCP)
-
-Este fluxo é **somente leitura remota**.
-
-- ✅ Permitido: ler arquivos do template via `get_file_contents`.
-- ❌ Proibido: qualquer escrita no repositório do template (`create`, `update`, `delete`, `push`, commits, PRs).
-- ❌ Se ferramentas de escrita estiverem disponíveis, NÃO usar durante este skill.
-- ✅ Geração acontece apenas no workspace local do usuário.
+- ✅ Permitido: ler arquivos do template via gh CLI ou git clone
+- ❌ Proibido: fazer push/commits, modificar template, usar MCP para escrita
+- ✅ Geração acontece apenas no workspace local do usuário
 
 ---
 
-## Pré-Fase 1 — Verificação de Cache Local
+---
 
-Antes de fazer qualquer chamada MCP, verifique se existe um cache local válido.
+## Fluxo de Dados: Pré-Fase 1 → Fase 4
 
-**Localização do cache:** `.apm/skills/gerador-scaffold-java/cache/template-config.json`
+**Premissa importante**: Fase 4 **NÃO precisa de MCP**, pois todos os dados necessários foram
+carregados na Pré-Fase 1 via gh CLI ou git clone.
 
-**Estrutura esperada:**
+```
+Pré-Fase 1: Fetch via gh CLI (ou git clone fallback)
+    ↓
+    Obtém 3 arquivos:
+    • TEMPLATE-MANIFEST.json → metadados de módulos e tokens
+    • GENERATOR.json → perguntas para entrevista
+    • README.md → template para novo README
+    ↓
+    Cache local (.apm/skills/.../cache/files/)
+    
+Fase 1-3: Entrevista & decisões (apenas manipulação de dados já em contexto)
+    ↓
+Fase 4: Geração local (reutiliza os 3 arquivos da Pré-Fase 1, **sem chamadas MCP**)
+    ↓
+    Gera arquivos adaptados no workspace local
+```
+
+**Benefício**: Sem dependência de MCP em tempo de execução (Fase 4), apenas em Pré-Fase 1.
+**Implicação**: Se gh CLI estiver disponível, todo o skill roda com ~5K tokens (vs ~150K com MCP).
+
+---
+
+## Pré-Fase 1 — Orquestração de Fetch (gh CLI com git clone Fallback)
+
+O script shell otimizado tenta automaticamente, em ordem:
+
+1. **gh CLI** (primário) — rápido, eficiente em tokens
+2. **git clone** (fallback) — universal, sempre disponível
+
+Script que orquestra isso:
+```bash
+.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh [owner] [repo] [branch] [batch_size] [refresh_cache]
+```
+
+### Execução automática
+
+Quando o usuário diz algo como "criar projeto Java", o script é executado automaticamente:
+```bash
+.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh heandroro java-hexagonal-template main 4 false
+```
+
+### Contrato de Resposta (API Contract)
+
+**JSON Response** (stdout):
 ```json
 {
-  "cachedAt": "2026-06-06T14:30:00Z",
-  "templateVersion": "string",
-  "manifest": { ...conteúdo de TEMPLATE-MANIFEST.json... },
-  "generator": { ...conteúdo de GENERATOR.json... }
+  "files": {
+    "TEMPLATE-MANIFEST.json": "{ ...content... }",
+    "GENERATOR.json": "{ ...content... }",
+    "README.md": "# Template..."
+  },
+  "metadata": {
+    "source": "gh-cli",        // or "git-clone-first" or "git-pull"
+    "duration": "3s"
+  },
+  "status": 0
 }
 ```
 
-**Lógica de decisão:**
+**Status Codes** (exit code + JSON `.status` field):
 
-1. Verificar se o argumento `--refresh-cache` foi passado → se sim, pular para passo 3.
-2. Tentar ler o arquivo de cache local:
-   - Se existir e `cachedAt` for há menos de 24 horas → usar cache, pular chamadas MCP de configuração.
-     Informar ao usuário: `[cache] Usando configuração do template em cache (atualizado em {cachedAt}).`
-   - Se ausente ou `cachedAt` ≥ 24h atrás → prosseguir para passo 3.
-3. Buscar via MCP (chamadas descritas na Fase 1 abaixo).
-4. Após busca bem-sucedida, serializar o resultado em `.apm/skills/gerador-scaffold-java/cache/template-config.json`
-   com `cachedAt` = timestamp ISO atual e `templateVersion` = valor de `TEMPLATE-MANIFEST.json.version`.
-   Informar ao usuário: `[cache] Configuração do template atualizada.`
+| Code | Significado | Ação |
+|------|------------|------|
+| **0** | ✅ Sucesso (todos 3 arquivos obtidos) | Extrair `.files{}` e prosseguir com Fase 1 |
+| **1** | ❌ Falha total (gh CLI e git clone ambos falharam) | Mostrar erro ao usuário; interromper skill |
+
+**Nota importante**: Ambos os scripts (fetch-template.sh e fetch-template-git.sh) retornam o **mesmo JSON**, apenas a origem (`metadata.source`) muda. Assim, o código LLM é transparente ao fallback.
+
+### Após receber os dados
+
+Independentemente da fonte (gh CLI ou git clone), você tem em contexto:
+- `TEMPLATE-MANIFEST.json` — metadados de módulos
+- `GENERATOR.json` — perguntas de entrevista
+- `README.md` — template README
+
+Estes dados **permanecem em contexto para todo o resto do skill** (Fases 1-4).
+**Sem chamadas MCP adicionais necessárias.**
 
 ---
 
@@ -285,20 +314,27 @@ Consulte `./references/module-dependencies.md` apenas para as regras de **format
 
 Execute na seguinte ordem, sem pular etapas:
 
-### 4.1 — Ler arquivos do template via MCP (paralelo)
+### 4.1 — Ler arquivos do template (já em cache local da Pré-Fase 1)
 
-Monte a lista completa de arquivos a ler para todos os módulos selecionados usando os caminhos
-do `TEMPLATE-MANIFEST.json`. Em seguida, emita **todas as chamadas `get_file_contents` em uma
-única resposta** como tool calls paralelos — não aguarde o resultado de uma leitura antes de
-emitir a próxima.
+**IMPORTANTE**: Os arquivos do template **já foram carregados na Pré-Fase 1** via gh CLI ou git clone fallback.
+**Não fazer chamadas MCP adicionais** — reutilizar os dados já em contexto.
 
-Emita todas as chamadas `get_file_contents` dos módulos selecionados **simultaneamente**
-— não sequencialmente. Aguarde todas concluírem antes de iniciar Phase 4.2.
+#### Revisão dos dados em contexto (Pré-Fase 1)
+
+Você já tem em contexto os 3 arquivos de configuração carregados na Pré-Fase 1:
+- `TEMPLATE-MANIFEST.json` — lista completa de módulos e seus arquivos
+- `GENERATOR.json` — perguntas de entrevista
+- `README.md` — template README
+
+Monte a lista de arquivos a gerar para todos os módulos selecionados usando os caminhos
+do `TEMPLATE-MANIFEST.json.modules[].manifest[]`. 
 
 Use os caminhos listados em `TEMPLATE-MANIFEST.json.modules[].manifest` para descobrir
 os arquivos críticos de cada módulo.
 
 Leia **somente os arquivos dos módulos selecionados** — não leia módulos excluídos.
+
+**Próximo passo**: Fase 4.2 (mapa de tokens). Não há tool calls nesta subetapa — apenas análise de dados já em contexto.
 
 ### 4.2 — Preparar mapa de substituição (junto com 4.1)
 
@@ -364,12 +400,12 @@ Se `mvn` não estiver no PATH, use `./mvnw clean package` (Maven Wrapper) quando
 3. Apresente o relatório de execução usando os contadores mantidos durante a execução:
 
    **Relatório de execução**
-   | Fase | Operações | Batches paralelos | Equivalente sequencial |
-   |------|-----------|-------------------|------------------------|
-   | 4.1 — Leitura MCP | `{reads_total}` arquivos | `{reads_batches}` batch(es) | `{reads_total}` chamadas |
-   | 4.3 — Geração local | `{writes_total}` arquivos | `{writes_batches}` batch(es) | `{writes_total}` chamadas |
+   | Fase | Operações | Batches paralelos | Nota |
+   |------|-----------|-------------------|------|
+   | Pré-Fase 1 — Fetch (gh CLI/git) | 3 arquivos | 1 | Executado automaticamente (fora desta skill) |
+   | 4.3 — Geração local | `{writes_total}` arquivos | `{writes_batches}` batch(es) | Tool calls Write em paralelo |
 
-   Operações serializadas evitadas: `{(reads_total - reads_batches) + (writes_total - writes_batches)}`
+   Operações serializadas evitadas: `{writes_total - writes_batches}`
    Para custo e tokens da sessão: verifique o comando de uso da sua harness (ex: `/cost` no Claude Code).
 
 4. Sugira (mas não execute) criar um commit e fazer push, pedindo confirmação explícita.

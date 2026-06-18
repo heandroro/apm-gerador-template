@@ -1,23 +1,15 @@
 name: apm-gerador-template
 version: 1.0.0
 description: APM package for scaffolding Java Hexagonal Architecture projects from
-  a template repository, generating locally by default. Reads template data via GitHub
-  MCP for dynamic module selection and token substitution.
+  a template repository, generating locally by default. Reads template data via gh CLI
+  (or git clone fallback) for dynamic module selection and token substitution.
 author: heandroro
 license: MIT
 type: hybrid
 includes: auto
 
-# Package-level dependencies (GitHub MCP — required by all skills)
-dependencies:
-  mcp:
-    # GitHub MCP server — REQUIRED to read template data
-    - name: io.github.github/github-mcp-server
-      tools:
-        - get_file_contents  # Read TEMPLATE-MANIFEST.json and module files
-      env:
-        GITHUB_TOKEN: ${GITHUB_TOKEN}  # Must be set in settings.json or environment
-      required: true
+# Package-level dependencies (None required — skill uses gh CLI and git clone)
+dependencies: {}
 
 # Explicit skill references
 skills:
