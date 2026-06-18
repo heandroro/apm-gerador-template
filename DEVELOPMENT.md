@@ -41,26 +41,30 @@ Pré-Fase 1 (fetch orchestration)
 │  ├─ Auto-retry only failed files
 │  └─ Return: JSON with status code (0/1/2)
 │
-└─ Fallback: GitHub MCP (if gh-cli fails)
-   └─ Direct `get_file_contents` calls to MCP server
+└─ Fallback: git clone (.apm/skills/gerador-scaffold-java/scripts/fetch-template-git.sh)
+   ├─ Optimized shallow clone (~30-50MB with --depth=1, --sparse, --filter=blob:none)
+   ├─ Per-file cache with 24h TTL
+   ├─ Incremental updates via git pull
+   └─ Return: Same JSON contract (files + status code)
 ```
 
-### why gh-CLI Orchestration?
+### Why Hybrid Strategy (gh CLI + git clone)?
 
 **Token Economy**: 
-- MCP direct: ~150K tokens (all files in response to LLM)
-- gh-cli: ~5K tokens (metadata only, files in `.cache/`)
-- Savings: 97% reduction in context weight
+- Both approaches: ~5K tokens (metadata only, files in `.cache/`)
+- Why not MCP alone: ~150K tokens (all files in response to LLM) = 97% worse
 
 **Resilience**:
 - Per-file cache: if fetch fails, retry only that file
-- Exponential backoff: avoids rate limits
-- Status codes (0/1/2) enable transparent fallback to MCP
+- Exponential backoff: avoids rate limits  
+- Status codes (0/1/2) enable transparent fallback to git clone
+- Two independent sources: works if either gh CLI or git is available
 
 **Performance**:
-- Cache hit (24h TTL): ~100ms
-- Cache miss: ~3-5s (parallel batches)
-- MCP direct: ~5s (but expensive in tokens)
+- Cache hit (24h TTL): ~100ms (both sources)
+- gh CLI cache miss: ~3-5s (parallel batches)
+- git clone first run: ~2-5min (then pulls are ~1s)
+- Universal availability: git exists everywhere
 
 ### Fetch Orchestration: Detailed Flow
 
@@ -99,11 +103,11 @@ exit_code=$?
 
 #### Step 2: Interpret Status Code
 
-| Status | Action |
-|--------|--------|
-| `0` | Use all files from JSON directly |
-| `1` | Fallback: use GitHub MCP for all 3 files |
-| `2` | Use cached files + MCP for missing files |
+| Status | Meaning | Action |
+|--------|---------|--------|
+| `0` | Complete success (all files obtained) | Use all files from JSON directly |
+| `1` | Complete failure (gh CLI unavailable) | Fallback: use git clone for all 3 files |
+| `2` | Partial success (some cached) | Use cached files + git clone for missing |
 
 #### Step 3: Cache Location
 
@@ -152,6 +156,27 @@ Cache is stored locally in the skill directory:
 **TTL Logic**: 24 hours from `files.meta` timestamp. After 24h, next fetch is from network.
 
 **Path**: Cache lives in skill directory (`.../cache/files/`), not in `.apm/.cache/` (global).
+
+### fetch-template-git.sh: Design (Fallback Strategy)
+
+**Location**: `.apm/skills/gerador-scaffold-java/scripts/fetch-template-git.sh`
+
+**Purpose**: Universal fallback when gh CLI is unavailable. Uses optimized shallow clone.
+
+**Key Optimizations**:
+- `--depth=1`: Clone only latest commit (no history)
+- `--single-branch`: Only main branch (no other branches)
+- `--filter=blob:none`: Lazy-load file contents (minimal download)
+- `--sparse`: Sparse checkout mode (only needed files)
+
+**Result**: ~30-50MB local clone (vs 500MB full clone)
+
+**Cache Strategy**:
+- Per-file cache in `.cache/files/` directory
+- 24h TTL via `.cache/files/files.meta` timestamp
+- Incremental updates via `git pull --ff-only` (only new changes)
+
+**Same Interface**: Returns identical JSON contract to fetch-template.sh (files + status code)
 
 ## Skill Development: Key Phases
 
@@ -233,9 +258,10 @@ Cache is stored locally in the skill directory:
 
 ### External Dependencies
 
-- **GitHub MCP** (`io.github.github/github-mcp-server`) — Required for reading template files via `get_file_contents`
+- **gh CLI** (`github.com/cli/cli`) — Recommended for template fetching (primary source, ~3-5s, 5K tokens)
+- **git** — Universal fallback for template fetching (always available, ~30-50MB cache)
 - **Template Repository** (`heandroro/java-hexagonal-template@main`) — Source of truth for modules, tokens, capabilities
-- **gh CLI** (`github.com/cli/cli`) — Used for parallel template fetching (preferred over MCP for token cost)
+- **GitHub MCP** (optional) — For advanced GitHub integration beyond template fetching
 
 ### Internal Documentation
 

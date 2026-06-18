@@ -11,17 +11,27 @@ Official APM references: [microsoft.github.io/apm](https://microsoft.github.io/a
 apm install heandroro/apm-gerador-template
 ```
 
-## Setup (Required)
+## Setup (Minimal)
 
-### 1. Create or get a GitHub personal access token
+The skill uses a **hybrid fetch strategy** for template data:
 
-Generate a token at: https://github.com/settings/tokens
+### Option A: Install gh CLI (Recommended)
 
-Minimum scopes needed: `public_repo` (read-only access to public repositories)
+**Fastest & most token-efficient approach.**
 
-### 2. Configure GitHub MCP in your Claude Code settings
+1. Install: `brew install gh` (macOS) or see [github.com/cli/cli](https://github.com/cli/cli)
+2. Authenticate: `gh auth login`
+3. Done! The skill auto-detects gh CLI and uses it.
 
-Add to your `settings.json` or `settings.local.json`:
+### Option B: Use git (Universal Fallback)
+
+**Works everywhere** — no additional installation needed.
+
+The skill automatically falls back to `git clone` if gh CLI is unavailable.
+
+### Optional: GitHub MCP (For advanced features)
+
+If you need GitHub integration beyond template fetching, configure MCP:
 
 ```json
 {
@@ -37,15 +47,12 @@ Add to your `settings.json` or `settings.local.json`:
 }
 ```
 
-### 3. Verify the setup
+### Verification
 
-The skill will automatically detect if GitHub MCP is configured and ready.
-
-If configuration is missing, the skill will:
-- Check if `GITHUB_TOKEN` exists → suggest activating GitHub MCP
-- Check if token is missing → suggest both token and MCP setup
-
-No manual verification needed — the skill handles it.
+The skill will automatically:
+- Try `gh CLI` (primary, ~3-5s, 5K tokens)
+- Fall back to `git clone` if gh unavailable (universal, ~30-50MB)
+- Work offline with cache hits (~100ms)
 
 ## Usage
 
