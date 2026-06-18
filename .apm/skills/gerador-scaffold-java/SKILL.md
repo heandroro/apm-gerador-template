@@ -148,9 +148,20 @@ Fase 4: Geração local (reutiliza os 3 arquivos da Pré-Fase 1, **sem novas cha
 
 Tente os métodos abaixo em ordem. Ao primeiro sucesso, prossiga para Fase 1.
 
+### Pré-verificação de cache (antes de qualquer método)
+
+```bash
+meta=".apm/skills/gerador-scaffold-java/cache/files/files.meta"
+[ -f "$meta" ] && [ $(( $(date +%s) - $(cat "$meta") )) -lt 86400 ] && echo "HIT" || echo "MISS"
+```
+
+- **HIT** → carregar os 3 arquivos de `.apm/skills/gerador-scaffold-java/cache/files/` e ir direto para Fase 1.
+- **MISS** → prosseguir para Método 1.
+
 ### Método 1 — MCP `get_file_contents` (primário)
 
-Faça as três chamadas em paralelo usando o GitHub MCP (owner/repo/branch definidos acima):
+Faça as **três chamadas em paralelo** (um único batch) usando o GitHub MCP
+(owner/repo/branch definidos acima):
 
 ```
 get_file_contents(owner, repo, "TEMPLATE-MANIFEST.json", branch)
@@ -158,7 +169,18 @@ get_file_contents(owner, repo, "GENERATOR.json",         branch)
 get_file_contents(owner, repo, "README.md",              branch)
 ```
 
-Se todos os 3 arquivos forem obtidos: prosseguir para Fase 1.
+Se todos os 3 arquivos forem obtidos com sucesso:
+
+1. Salve no cache em **um batch paralelo** (Write tool calls):
+   - `TEMPLATE-MANIFEST.json` → `.apm/skills/gerador-scaffold-java/cache/files/TEMPLATE-MANIFEST.json`
+   - `GENERATOR.json`         → `.apm/skills/gerador-scaffold-java/cache/files/GENERATOR.json`
+   - `README.md`              → `.apm/skills/gerador-scaffold-java/cache/files/README.md`
+2. Atualize o timestamp de validade:
+   ```bash
+   date +%s > .apm/skills/gerador-scaffold-java/cache/files/files.meta
+   ```
+3. Prosseguir para Fase 1.
+
 Se o MCP falhar ou não estiver disponível: usar Método 2.
 
 ### Método 2 — gh CLI (fallback, até ~40 arquivos)
