@@ -14,6 +14,12 @@ Referência oficial do APM: https://microsoft.github.io/apm/
 
 ---
 
+**Nota sobre paths neste documento**: Todos os caminhos scripts (`scripts/fetch-template.sh`, etc.)
+são **relativos à raiz da skill** (`.apm/skills/gerador-scaffold-java/`). Se a estrutura de 
+diretórios mudar, manter os paths relativos será necessário (veja DEVELOPMENT.md para detalhes).
+
+---
+
 ## Template de Referência (Configurável)
 
 **Padrão**:

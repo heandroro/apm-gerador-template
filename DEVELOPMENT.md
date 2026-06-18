@@ -281,6 +281,42 @@ export TEMPLATE_BRANCH=develop
 
 ---
 
+## Directory Structure & Path Maintenance
+
+**Current structure** (documented in SKILL.md and scripts):
+```
+.apm/skills/gerador-scaffold-java/
+├── lib/
+│   ├── template-config.sh      # Centralized config
+│   └── cache.sh                # Cache utilities
+├── scripts/
+│   ├── fetch-template.sh       # Primary: gh CLI fetch
+│   └── fetch-template-git.sh   # Fallback: git clone
+├── SKILL.md                    # LLM instructions (references scripts/)
+├── references/
+│   ├── files-to-adapt.md
+│   ├── module-dependencies.md
+│   └── readme-template.md
+├── prompts/
+│   └── new-java-hexagonal-project.prompt.md
+└── cache/
+    └── files/                  # Runtime cache (gitignored)
+```
+
+**Paths in SKILL.md are relative** to `.apm/skills/gerador-scaffold-java/`:
+- `scripts/fetch-template.sh` = `.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh`
+- `lib/template-config.sh` = `.apm/skills/gerador-scaffold-java/lib/template-config.sh`
+
+**If you reorganize directories**:
+1. Update paths in SKILL.md (lines with `scripts/`, `lib/`, etc.)
+2. Update $SCRIPT_DIR calculations in scripts if nesting depth changes
+3. Update `source` statements in scripts that reference `../lib/template-config.sh`
+4. Test that fetch scripts still find template-config.sh
+
+**Recommendation**: Keep current structure stable (lib/ and scripts/ at same level).
+
+---
+
 ## Skill Development: Key Phases
 
 ### Pré-Fase 1: Fetch Orchestration
