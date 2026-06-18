@@ -78,7 +78,7 @@ O skill tenta automaticamente, nesta ordem:
 1. **gh CLI** — Se disponível e autenticado (recomendado, mais eficiente em tokens)
    - Instalado? `which gh`
    - Autenticado? `gh auth status`
-   - Se OK → executar `.apm/scripts/fetch-template.sh` (Pré-Fase 1 Passo 1)
+   - Se OK → executar `.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh` (Pré-Fase 1 Passo 1)
 
 2. **GitHub MCP** — Se gh CLI não estiver disponível (fallback)
    - Configurado em `settings.json`?
@@ -157,13 +157,13 @@ Antes de fazer qualquer chamada MCP, tente usar o script shell otimizado que imp
 
 Tente executar:
 ```bash
-.apm/scripts/fetch-template.sh [owner] [repo] [branch] [batch_size] [refresh_cache]
+.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh [owner] [repo] [branch] [batch_size] [refresh_cache]
 ```
 
 **Exemplos:**
 ```bash
-.apm/scripts/fetch-template.sh                    # Padrões: heandroro, java-hexagonal-template, main
-.apm/scripts/fetch-template.sh heandroro java-hexagonal-template main 4 true  # Force refresh
+.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh                    # Padrões: heandroro, java-hexagonal-template, main
+.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh heandroro java-hexagonal-template main 4 true  # Force refresh
 ```
 
 **Resultado esperado:** JSON com `status` e `files`:
@@ -209,7 +209,7 @@ Tente executar:
 ### Passo 4: Serializar cache após obter todos os dados
 
 Independentemente da origem (gh-cli ou MCP), após ter todos os 3 arquivos obrigatórios,
-salvar em `.apm/scripts/.cache/files/` (estrutura de per-file cache mantida pelo script).
+salvar em `.apm/skills/gerador-scaffold-java/cache/files/` (estrutura de per-file cache mantida pelo script).
 
 Informar ao usuário:
 - Se usado gh-cli: `[cache] Template data via gh CLI (batch fetch em {duration})`

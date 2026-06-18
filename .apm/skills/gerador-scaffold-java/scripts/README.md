@@ -17,13 +17,13 @@ This directory contains helper scripts for the `gerador-scaffold-java` skill, wi
 
 ```bash
 # Use defaults (fetch from heandroro/java-hexagonal-template@main)
-.apm/scripts/fetch-template.sh
+.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh
 
 # Force cache refresh (ignore 24h TTL)
-.apm/scripts/fetch-template.sh heandroro java-hexagonal-template main 4 true
+.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh heandroro java-hexagonal-template main 4 true
 
 # Custom owner/repo
-.apm/scripts/fetch-template.sh myorg my-template-repo main 4 false
+.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh myorg my-template-repo main 4 false
 ```
 
 ### How It Works
@@ -135,7 +135,7 @@ SKILL.md Pré-Fase 1 flow:
 
 1. **Try gh-cli approach** (primary):
    ```bash
-   status=$(.apm/scripts/fetch-template.sh)
+   status=$(.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh)
    exit_code=$?
    ```
 
@@ -183,20 +183,20 @@ SKILL.md Pré-Fase 1 flow:
 
 ```bash
 # Test with defaults
-.apm/scripts/fetch-template.sh
+.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh
 
 # Test with custom owner/repo (your fork)
-.apm/scripts/fetch-template.sh myuser my-fork-of-template
+.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh myuser my-fork-of-template
 
 # Force refresh (ignore cache)
-.apm/scripts/fetch-template.sh heandroro java-hexagonal-template main 4 true
+.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh heandroro java-hexagonal-template main 4 true
 
 # Check exit code
-.apm/scripts/fetch-template.sh
+.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh
 echo "Exit code: $?"  # Should be 0, 1, or 2
 
 # Parse JSON output
-result=$(.apm/scripts/fetch-template.sh)
+result=$(.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh)
 status=$(echo "$result" | jq -r '.status')
 missing=$(echo "$result" | jq -r '.missing[]' 2>/dev/null || echo "none")
 ```

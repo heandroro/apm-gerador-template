@@ -5,8 +5,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-CACHE_DIR="${PROJECT_ROOT}/.cache"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+CACHE_DIR="${PROJECT_ROOT}/cache"
 FILES_CACHE_DIR="${CACHE_DIR}/files"
 CACHE_FILE="${CACHE_DIR}/template-files.json.gz"
 CACHE_META="${CACHE_DIR}/cache.meta"
