@@ -1,7 +1,9 @@
 # apm-gerador-template
 
-APM package for scaffolding Java Hexagonal Architecture projects from the
-[java-hexagonal-template](https://github.com/heandroro/java-hexagonal-template).
+APM package for scaffolding Java Hexagonal Architecture projects.
+
+**Default template**: [java-hexagonal-template](https://github.com/heandroro/java-hexagonal-template)
+(Configurable via `TEMPLATE_OWNER` and `TEMPLATE_REPO` environment variables — see [DEVELOPMENT.md](DEVELOPMENT.md))
 
 Official APM references: [microsoft.github.io/apm](https://microsoft.github.io/apm/) (general) and [microsoft.github.io/apm/producer](https://microsoft.github.io/apm/producer/) (producer).
 
@@ -67,7 +69,7 @@ when you say things like:
 - _"criar repositório com arquitetura hexagonal"_
 
 The skill will interview you, present a summary, and then generate all files locally
-in your workspace using the template data read through GitHub MCP.
+in your workspace using template data (fetched via gh CLI or git clone).
 
 No commit or push happens automatically in this flow.
 
@@ -81,19 +83,23 @@ The prompt template is now bundled as a skill asset at:
 
 ## What gets generated
 
-| Module | Included when |
-| --- | --- |
-| `core` | Always |
-| `application` | Always |
-| `infra-api` | `app_type = api` |
-| `infra-kafka` | `app_type = worker`, broker = `kafka` |
-| `infra-postgres` | `database = postgres` or `both` |
-| `infra-dynamodb` | `database = dynamodb` or `both` |
-| `infra-valkey` | `cache = server` |
-| `infra-client-api` | `http_client = feign` |
+The skill generates a complete Java Hexagonal Architecture project with:
 
-All files are adapted with token substitution and written locally. See the skill documentation for the complete token reference.
+- **Core modules** (always included): `core`, `application`
+- **Infrastructure modules** (conditional): API, database, cache, messaging, etc.
+- **Configuration files**: `pom.xml`, `application.yml`, `Dockerfile`, etc.
+- **Documentation**: `README.md`, `AGENTS.md`
+
+**Modules included** depend on your choices during the interview (database type, app type, etc.).
+
+For the **complete module list and selection logic**, see:
+- [SKILL.md](DEVELOPMENT.md) — Fase 3 (Module Decision)
+- Template source: [TEMPLATE-MANIFEST.json](https://github.com/heandroro/java-hexagonal-template/blob/main/TEMPLATE-MANIFEST.json) (source of truth)
+
+All files are adapted with token substitution based on your project name and namespace.
 
 ## Template source
 
-[heandroro/java-hexagonal-template](https://github.com/heandroro/java-hexagonal-template)
+**Default**: [heandroro/java-hexagonal-template](https://github.com/heandroro/java-hexagonal-template)
+
+**Customizable**: Set `TEMPLATE_OWNER` and `TEMPLATE_REPO` environment variables to use a different template repository (see [DEVELOPMENT.md](DEVELOPMENT.md#template-configuration-centralized))
