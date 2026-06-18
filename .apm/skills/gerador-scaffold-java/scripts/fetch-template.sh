@@ -298,10 +298,20 @@ main() {
 
   echo "[template] Fetching from $OWNER/$REPO@$BRANCH" >&2
 
-  # Check gh CLI
+  # Try gh CLI first
   if ! check_gh_cli; then
-    echo '{"error": "gh CLI not available", "fallback": true}'
-    return 1
+    # gh CLI not available, fallback to git clone
+    echo "[template] gh CLI not available, using git clone fallback..." >&2
+    local git_script="$SCRIPT_DIR/fetch-template-git.sh"
+
+    if [[ ! -f "$git_script" ]]; then
+      echo '{"error": "gh CLI and git clone fallback script not found", "status": 1}' >&2
+      return 1
+    fi
+
+    # Call git clone fallback script
+    "$git_script"
+    return $?
   fi
 
   # Clean old error files if doing fresh fetch
