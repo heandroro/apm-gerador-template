@@ -74,7 +74,7 @@ Para minimizar o tempo total de execução, aplique batching de tool calls em op
 
 - **Fase 4.1 (Leitura de template)**: Reutilize os dados já em contexto da Pré-Fase 1 — **não fazer tool calls**.
   Os arquivos foram carregados via gh CLI ou git clone, não precisam de chamadas MCP adicionais.
-- **Escritas de arquivo (Fase 4.3)**: após criar o `pom.xml` raiz, emita TODOS os demais arquivos de módulos em **uma única resposta** como Write tool calls paralelos.
+- **Escritas de arquivo (Fase 4.3)**: após criar o `pom.xml` agregador raiz em `{workspace}/pom.xml`, emita TODOS os demais arquivos de módulos (`app/core/`, `app/application/`, `app/infra-*/`, etc.) em **uma única resposta** como Write tool calls paralelos.
 - **Mapa de tokens (Fase 4.2)**: prepare-o imediatamente — o mapa depende apenas dos dados da Fase 1 e não tem dependências externas.
 
 Regra geral: se múltiplas operações não têm dependência entre si, emita-as juntas em uma única resposta.
@@ -366,16 +366,23 @@ Consulte `./references/files-to-adapt.md` para as regras de substituição por *
 ### 4.3 — Criar estrutura local e materializar arquivos (paralelo)
 
 1. Criar a estrutura de diretórios no workspace preservando a organização do template.
+   Estrutura obrigatória:
+   - `pom.xml` na raiz do workspace (agregador Maven — único `pom.xml` fora de `app/`)
+   - Módulos em `app/{módulo}/` → `app/core/`, `app/application/`, `app/infra-*/`
+   - Infraestrutura em `infra/local/docker-compose.yml`
+   - Arquivos raiz: `README.md`, `AGENTS.md`, `.gitignore`
 2. Para cada arquivo de cada módulo incluído, aplicar as substituições do mapa acima.
 3. Renomear caminhos de pacote Java: `com/mycompany/template/` → caminho derivado de `{NAMESPACE}`.
 4. Filtrar `infra/local/docker-compose.yml`: manter apenas os serviços presentes em `selectedDockerServices[]`.
 5. Ordem de geração:
-   - **Passo único**: criar `pom.xml` raiz (inclui apenas `<module>` dos módulos selecionados).
-   - **Em seguida**: emitir TODOS os demais arquivos (`core/`, módulos `infra-*`, `application/`,
-     `README.md`, `AGENTS.md`, `.gitignore`) em **uma única resposta** como Write tool calls
-     paralelos — esses arquivos são independentes entre si.
+   - **Passo único**: criar `{workspace}/pom.xml` (pom agregador raiz — contém apenas as entradas
+     `<module>app/{módulo}</module>` dos módulos selecionados; sem `<packaging>` ou código fonte).
+   - **Em seguida**: emitir TODOS os demais arquivos (`app/core/`, módulos `app/infra-*/`,
+     `app/application/`, `infra/local/docker-compose.yml`, `README.md`, `AGENTS.md`, `.gitignore`)
+     em **uma única resposta** como Write tool calls paralelos — esses arquivos são independentes
+     entre si.
 
-Remover do `pom.xml` raiz as referências `<module>` de módulos excluídos.
+Remover do `{workspace}/pom.xml` (pom raiz) as referências `<module>` de módulos excluídos.
 Remover do `app/application/pom.xml` as `<dependency>` de módulos excluídos.
 
 ### 4.4 — Validação Maven
