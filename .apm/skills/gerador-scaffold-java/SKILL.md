@@ -72,10 +72,11 @@ Para otimizar custo de tokens e processamento da LLM:
 
 Para minimizar o tempo total de execução, aplique batching de tool calls em operações de I/O:
 
-- **Fase 4.1 (Leitura de template)**: Reutilize os dados já em contexto da Pré-Fase 1 — **não fazer tool calls**.
-  Os arquivos foram carregados via gh CLI ou git clone, não precisam de chamadas MCP adicionais.
+- **Fase 4.1 (Fetch dos arquivos-fonte)**: Um Bash para listar paths via git tree API, depois
+  batches paralelos de `get_file_contents` via MCP (≤20 arquivos por batch). O mapa de tokens
+  (Fase 4.2) pode ser preparado em paralelo com o primeiro batch de MCP.
 - **Escritas de arquivo (Fase 4.3)**: após criar o `pom.xml` agregador raiz em `{workspace}/pom.xml`, emita TODOS os demais arquivos de módulos (`app/core/`, `app/application/`, `app/infra-*/`, etc.) em **uma única resposta** como Write tool calls paralelos.
-- **Mapa de tokens (Fase 4.2)**: prepare-o imediatamente — o mapa depende apenas dos dados da Fase 1 e não tem dependências externas.
+- **Mapa de tokens (Fase 4.2)**: prepare-o em paralelo com os fetches da Fase 4.1 — depende apenas dos dados da Pré-Fase 1, sem dependência dos arquivos-fonte.
 
 Regra geral: se múltiplas operações não têm dependência entre si, emita-as juntas em uma única resposta.
 
@@ -85,16 +86,19 @@ Para o relatório final (Fase 4.5), mantenha contadores internos durante a execu
 
 ---
 
-## Pré-requisito: Acesso ao Template (gh CLI ou git)
+## Pré-requisito: Acesso ao Template (MCP → gh CLI → git)
 
-**Este skill usa um dos dois métodos (em ordem de preferência):**
+**Este skill usa três métodos (em ordem de preferência):**
 
-1. **gh CLI** (recomendado) — mais rápido, ~3-5s, ~5K tokens
+1. **MCP `get_file_contents`** (primário) — sem dependências externas; disponível sempre que
+   o GitHub MCP estiver ativo na sessão Claude Code.
+
+2. **gh CLI** (fallback) — até ~40 arquivos; requer instalação e autenticação.
    - Instalado? `which gh`
    - Autenticado? `gh auth status`
    - Se não: `brew install gh && gh auth login`
 
-2. **git** (universal fallback) — sempre disponível, ~30-50MB cache local
+3. **git clone** (último recurso) — universal, ~30-50MB cache local.
    - Comando: `git --version` (já deve estar instalado)
    - Sem autenticação necessária para repositórios públicos
 
@@ -104,8 +108,8 @@ Para o relatório final (Fase 4.5), mantenha contadores internos durante a execu
 
 Este fluxo é **somente leitura remota** do template público.
 
-- ✅ Permitido: ler arquivos do template via gh CLI ou git clone
-- ❌ Proibido: fazer push/commits, modificar template, usar MCP para escrita
+- ✅ Permitido: ler arquivos do template via MCP `get_file_contents`, gh CLI ou git clone
+- ❌ Proibido: fazer push/commits ou modificar o template remoto
 - ✅ Geração acontece apenas no workspace local do usuário
 
 ---
@@ -114,51 +118,92 @@ Este fluxo é **somente leitura remota** do template público.
 
 ## Fluxo de Dados: Pré-Fase 1 → Fase 4
 
-**Premissa importante**: Fase 4 **NÃO precisa de MCP**, pois todos os dados necessários foram
-carregados na Pré-Fase 1 via gh CLI ou git clone.
+**Premissa importante**: Fase 4 **NÃO precisa de fetch adicional**, pois todos os dados necessários foram
+carregados na Pré-Fase 1.
 
 ```
-Pré-Fase 1: Fetch via gh CLI (ou git clone fallback)
+Pré-Fase 1: MCP get_file_contents (primário)
+            ↳ fallback: gh CLI script (até ~40 arquivos)
+            ↳ fallback: git clone (último recurso)
     ↓
     Obtém 3 arquivos:
     • TEMPLATE-MANIFEST.json → metadados de módulos e tokens
     • GENERATOR.json → perguntas para entrevista
     • README.md → template para novo README
     ↓
-    Cache local (.apm/skills/.../cache/files/)
-    
+    Dados em contexto (+ cache local se obtidos via gh CLI ou git)
+
 Fase 1-3: Entrevista & decisões (apenas manipulação de dados já em contexto)
     ↓
-Fase 4: Geração local (reutiliza os 3 arquivos da Pré-Fase 1, **sem chamadas MCP**)
+Fase 4: Geração local (reutiliza os 3 arquivos da Pré-Fase 1, **sem novas chamadas de fetch**)
     ↓
     Gera arquivos adaptados no workspace local
 ```
 
-**Benefício**: Sem dependência de MCP em tempo de execução (Fase 4), apenas em Pré-Fase 1.
-**Implicação**: Se gh CLI estiver disponível, todo o skill roda com ~5K tokens (vs ~150K com MCP).
+**Benefício**: MCP não requer ferramentas externas e está sempre disponível na sessão Claude Code.
+**Fallback eficiente**: Se MCP falhar, gh CLI obtém até ~40 arquivos com ~5K tokens.
 
 ---
 
-## Pré-Fase 1 — Orquestração de Fetch (gh CLI com git clone Fallback)
+## Pré-Fase 1 — Orquestração de Fetch (MCP → gh CLI → git clone)
 
-O script shell otimizado tenta automaticamente, em ordem:
+Tente os métodos abaixo em ordem. Ao primeiro sucesso, prossiga para Fase 1.
 
-1. **gh CLI** (primário) — rápido, eficiente em tokens
-2. **git clone** (fallback) — universal, sempre disponível
+### Pré-verificação de cache (antes de qualquer método)
 
-Script que orquestra isso:
 ```bash
-.apm/skills/gerador-scaffold-java/scripts/fetch-template.sh [owner] [repo] [branch] [batch_size] [refresh_cache]
+meta=".apm/skills/gerador-scaffold-java/cache/files/files.meta"
+[ -f "$meta" ] && [ $(( $(date +%s) - $(cat "$meta") )) -lt 86400 ] && echo "HIT" || echo "MISS"
 ```
 
-### Execução automática
+- **HIT** → carregar os 3 arquivos de `.apm/skills/gerador-scaffold-java/cache/files/` e ir direto para Fase 1.
+- **MISS** → prosseguir para Método 1.
 
-Quando o usuário diz algo como "criar projeto Java", o script é executado automaticamente:
+### Método 1 — MCP `get_file_contents` (primário)
+
+Faça as **três chamadas em paralelo** (um único batch) usando o GitHub MCP
+(owner/repo/branch definidos acima):
+
+```
+get_file_contents(owner, repo, "TEMPLATE-MANIFEST.json", branch)
+get_file_contents(owner, repo, "GENERATOR.json",         branch)
+get_file_contents(owner, repo, "README.md",              branch)
+```
+
+Se todos os 3 arquivos forem obtidos com sucesso:
+
+1. Salve no cache em **um batch paralelo** (Write tool calls):
+   - `TEMPLATE-MANIFEST.json` → `.apm/skills/gerador-scaffold-java/cache/files/TEMPLATE-MANIFEST.json`
+   - `GENERATOR.json`         → `.apm/skills/gerador-scaffold-java/cache/files/GENERATOR.json`
+   - `README.md`              → `.apm/skills/gerador-scaffold-java/cache/files/README.md`
+2. Atualize o timestamp de validade:
+   ```bash
+   date +%s > .apm/skills/gerador-scaffold-java/cache/files/files.meta
+   ```
+3. Prosseguir para Fase 1.
+
+Se o MCP falhar ou não estiver disponível: usar Método 2.
+
+### Método 2 — gh CLI (fallback, até ~40 arquivos)
+
+Execute o script otimizado com cache e retry:
+
 ```bash
 .apm/skills/gerador-scaffold-java/scripts/fetch-template.sh heandroro java-hexagonal-template main 4 false
 ```
 
-### Contrato de Resposta (API Contract)
+O script tenta gh CLI e, se falhar, cai automaticamente para git clone (Método 3).
+
+### Método 3 — git clone (último recurso, acionado pelo script acima)
+
+Invocado automaticamente por `fetch-template.sh` quando gh CLI falha:
+```
+.apm/skills/gerador-scaffold-java/scripts/fetch-template-git.sh
+```
+
+Se todos os métodos falharem: exibir erro claro ao usuário e interromper o skill.
+
+### Contrato de Resposta — Métodos 2 e 3 (script)
 
 **JSON Response** (stdout):
 ```json
@@ -176,32 +221,27 @@ Quando o usuário diz algo como "criar projeto Java", o script é executado auto
 }
 ```
 
-**Status Codes** (exit code + JSON `.status` field):
-
-| Code | Significado | Ação |
-|------|------------|------|
+| Status | Significado | Ação |
+|--------|------------|------|
 | **0** | ✅ Sucesso (todos 3 arquivos obtidos) | Extrair `.files{}` e prosseguir com Fase 1 |
-| **1** | ❌ Falha total (gh CLI e git clone ambos falharam) | Mostrar erro ao usuário; interromper skill |
-
-**Nota importante**: Ambos os scripts (fetch-template.sh e fetch-template-git.sh) retornam o **mesmo JSON**, apenas a origem (`metadata.source`) muda. Assim, o código LLM é transparente ao fallback.
+| **1** | ❌ Falha total (gh CLI e git clone falharam) | Mostrar erro; interromper skill |
 
 ### Após receber os dados
 
-Independentemente da fonte (gh CLI ou git clone), você tem em contexto:
+Independentemente do método usado, você tem em contexto:
 - `TEMPLATE-MANIFEST.json` — metadados de módulos
 - `GENERATOR.json` — perguntas de entrevista
 - `README.md` — template README
 
 Estes dados **permanecem em contexto para todo o resto do skill** (Fases 1-4).
-**Sem chamadas MCP adicionais necessárias.**
+**Não refaça o fetch** — não repita chamadas MCP nem execute o script novamente.
 
 ---
 
 ## Fase 1 — Entrevista de Projeto
 
-**Antes da primeira pergunta**, leia os dois arquivos de configuração via `get_file_contents`
-(owner/repo/branch definidos acima) — **somente se o cache não foi utilizado na Pré-Fase 1**.
-Armazene ambos em contexto.
+**Antes da primeira pergunta**, confirme que `TEMPLATE-MANIFEST.json` e `GENERATOR.json` estão
+em contexto (carregados na Pré-Fase 1). **Não refaça o fetch** — os dados já estão disponíveis.
 
 Faça as perguntas abaixo **uma de cada vez**, aguardando a resposta antes de prosseguir.
 Use linguagem amigável e exemplos concretos para guiar o usuário.
@@ -314,32 +354,53 @@ Consulte `./references/module-dependencies.md` apenas para as regras de **format
 
 Execute na seguinte ordem, sem pular etapas:
 
-### 4.1 — Ler arquivos do template (já em cache local da Pré-Fase 1)
+### 4.1 — Descobrir e buscar arquivos-fonte do template (git tree + MCP)
 
-**IMPORTANTE**: Os arquivos do template **já foram carregados na Pré-Fase 1** via gh CLI ou git clone fallback.
-**Não fazer chamadas MCP adicionais** — reutilizar os dados já em contexto.
+#### Passo 1 — Listar paths do template (um comando Bash)
 
-#### Revisão dos dados em contexto (Pré-Fase 1)
+Com base em `selectedModules[]` da Fase 3, construa o filtro `jq` dinamicamente e execute:
 
-Você já tem em contexto os 3 arquivos de configuração carregados na Pré-Fase 1:
-- `TEMPLATE-MANIFEST.json` — lista completa de módulos e seus arquivos
-- `GENERATOR.json` — perguntas de entrevista
-- `README.md` — template README
+```bash
+gh api 'repos/{TEMPLATE_OWNER}/{TEMPLATE_REPO}/git/trees/{TEMPLATE_BRANCH}?recursive=1' \
+  --jq '[.tree[]
+    | select(.type == "blob")
+    | select(
+        .path == "pom.xml"                                or
+        .path == ".gitignore"                             or
+        .path == "AGENTS.md"                              or
+        (.path | startswith("app/core/"))                 or
+        (.path | startswith("app/application/"))          or
+        # repita um startswith para cada módulo infra em selectedModules[]:
+        (.path | startswith("app/infra-postgres/"))       or
+        (.path | startswith("infra/local/docker-compose"))
+      )
+    | .path
+  ] | .[]'
+```
 
-Monte a lista de arquivos a gerar para todos os módulos selecionados usando os caminhos
-do `TEMPLATE-MANIFEST.json.modules[].manifest[]`. 
+> Substitua `{TEMPLATE_OWNER}`, `{TEMPLATE_REPO}`, `{TEMPLATE_BRANCH}` pelos valores do
+> topo deste documento. Inclua um `startswith("app/{módulo}/")` por cada módulo em
+> `selectedModules[]`. Exclua módulos não selecionados.
 
-Use os caminhos listados em `TEMPLATE-MANIFEST.json.modules[].manifest` para descobrir
-os arquivos críticos de cada módulo.
+Resultado: lista de paths relativos à raiz do template (ex: `app/core/pom.xml`,
+`app/core/src/main/java/com/mycompany/template/core/domain/User.java`).
 
-Leia **somente os arquivos dos módulos selecionados** — não leia módulos excluídos.
+#### Passo 2 — Buscar arquivos via MCP (batches paralelos, ≤20 por batch)
 
-**Próximo passo**: Fase 4.2 (mapa de tokens). Não há tool calls nesta subetapa — apenas análise de dados já em contexto.
+Para cada path da lista, chame `get_file_contents(owner, repo, path, branch)` em batches
+paralelos de no máximo 20 chamadas por resposta.
 
-### 4.2 — Preparar mapa de substituição (junto com 4.1)
+Mantenha todos os conteúdos em contexto indexados pelo path do template.
 
-Monte o mapa de tokens na **mesma resposta** em que emite as leituras MCP da Fase 4.1.
-O mapa depende apenas dos dados coletados na Fase 1 — não há dependência das leituras de arquivo.
+> O mapa de tokens (Fase 4.2) **pode ser preparado em paralelo** com o primeiro batch —
+> não há dependência entre eles.
+
+Leia **somente os arquivos dos módulos selecionados** — ignore paths de módulos excluídos.
+
+### 4.2 — Preparar mapa de substituição (em paralelo com Fase 4.1)
+
+Monte o mapa de tokens **em paralelo com os batches de fetch da Fase 4.1** (sem dependência
+entre eles). O mapa depende apenas dos dados da Pré-Fase 1 — não dos arquivos-fonte.
 
 Monte o mapa de tokens usando `TEMPLATE-MANIFEST.json.replaceTokens[]` (já em contexto).
 
@@ -371,8 +432,14 @@ Consulte `./references/files-to-adapt.md` para as regras de substituição por *
    - Módulos em `app/{módulo}/` → `app/core/`, `app/application/`, `app/infra-*/`
    - Infraestrutura em `infra/local/docker-compose.yml`
    - Arquivos raiz: `README.md`, `AGENTS.md`, `.gitignore`
-2. Para cada arquivo de cada módulo incluído, aplicar as substituições do mapa acima.
-3. Renomear caminhos de pacote Java: `com/mycompany/template/` → caminho derivado de `{NAMESPACE}`.
+2. Para cada arquivo buscado na Fase 4.1, adaptar o conteúdo (não gerar — usar o conteúdo
+   real do template):
+   - Substituir todos os tokens conforme o mapa da Fase 4.2
+   - Calcular o path de destino: path do template → substituir `com/mycompany/template/`
+     por `{NAMESPACE_PATH}/` no caminho do arquivo
+3. O path de destino final de cada arquivo é o path do template com a renomeação de pacote
+   aplicada. Ex: `app/core/src/main/java/com/mycompany/template/core/domain/User.java`
+   → `app/core/src/main/java/{NAMESPACE_PATH}/core/domain/User.java`.
 4. Filtrar `infra/local/docker-compose.yml`: manter apenas os serviços presentes em `selectedDockerServices[]`.
 5. Ordem de geração:
    - **Passo único**: criar `{workspace}/pom.xml` (pom agregador raiz — contém apenas as entradas
